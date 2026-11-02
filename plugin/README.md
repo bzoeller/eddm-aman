@@ -9,13 +9,15 @@ Pro Flieger liefert es Callsign, Typ, WTC, Position, Höhe, Groundspeed, Kurs, R
 
 ## Secrets für den automatischen Release (einmalig, für Betreuer)
 
-GitHub baut die Releases unter Windows und braucht dafür die beiden SDK-Dateien, ohne dass sie öffentlich ins Repo kommen. In der PowerShell im Ordner mit den Dateien:
+GitHub baut die Releases unter Windows und braucht dafür die beiden SDK-Dateien, ohne dass sie ins Repo kommen. Weil ein Secret höchstens 48 KB groß sein darf, packt das Skript `tools/set-sdk-secrets.ps1` die Dateien und speichert sie in Stücken als `ES_SDK_H_1…` und `ES_SDK_LIB_1…`.
 
 ```
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("$PWD\EuroScopePlugIn.h")) | Set-Clipboard
+winget install --id GitHub.cli
+gh auth login
+powershell -ExecutionPolicy Bypass -File tools\set-sdk-secrets.ps1
 ```
 
-Dann auf GitHub unter **Settings → Secrets and variables → Actions → New repository secret** den Namen `ES_SDK_H` eintragen und den Inhalt einfügen. Dasselbe mit `EuroScopePlugInDll.lib` als `ES_SDK_LIB`.
+Das Skript nimmt die Dateien aus `%APPDATA%\EuroScope\PlugIn`. Liegen sie woanders: `-SdkDir "C:\..."` anhängen.
 
 ## Bauen (einmalig, unter Windows)
 

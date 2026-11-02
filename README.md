@@ -12,7 +12,7 @@ Arrival manager for Munich (EDDM) on VATSIM: a EuroScope plug-in plus a display 
 
 ## Neue Version veröffentlichen (für Betreuer)
 
-Einmalig: In den Repository-Einstellungen unter **Settings → Secrets and variables → Actions** zwei Secrets anlegen, `ES_SDK_H` und `ES_SDK_LIB`, mit dem Base64-Inhalt von `EuroScopePlugIn.h` und `EuroScopePlugInDll.lib` (siehe `plugin/README.md`). Die SDK-Dateien selbst kommen nie ins Repo.
+Einmalig: die EuroScope-SDK-Dateien mit `tools/set-sdk-secrets.ps1` als GitHub-Secrets ablegen (siehe `plugin/README.md`). Die SDK-Dateien selbst kommen nie ins Repo.
 
 Jede Version: Nummer in `VERSION` erhöhen, committen, Tag `v<Nummer>` pushen. GitHub baut unter Windows DLL und Installer, berechnet die Prüfsummen und veröffentlicht das Release. Danach holen sich alle Plugins die neue Version beim nächsten EuroScope-Start.
 
