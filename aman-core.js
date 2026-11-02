@@ -648,17 +648,11 @@
           if (phase === 1 && lastOld != null) req = Math.max(req, lastOld + (it.tFinal || 0) + (cfg.defaults.rwyChangeBufferSec || 0));
           let guard2 = 0, c;
           while ((c = closedAt(side, req)) && guard2++ < 20) req = c.to;
-          // Hinter dem IAF steht der Streifen auf der aktuellen Vorhersage: werden Zeit und Meilen
-          // auf Downwind oder Final kuerzer (Abkuerzung, schneller), rueckt er sofort nach.
-          // Vor dem IAF steht er auf der geplanten Zeit.
-          // Nicht naeher als die Mindeststaffelung (Radar oder Wirbelschleppe) an den Vordermann.
-          let sta = req;
-          if (it.passedIaf) {
-            sta = it.eta;
-            if (prevItem) sta = Math.max(sta, prevItem.sta + minSepSeconds(prevItem, it, side, it.dir, winds));
-            let g3 = 0, c3;
-            while ((c3 = closedAt(side, sta)) && g3++ < 20) sta = c3.to;
-          }
+          // Der Streifen steht immer auf der geplanten Zeit mit voller Staffelung (FLOW, Wirbelschleppe,
+          // Landerate). Werden Zeit und Meilen kuerzer (Abkuerzung, schneller), wird die ETA kuerzer und
+          // der Streifen rueckt nach, soweit der Vordermann es zulaesst. So passen Schirm, APP-Planung
+          // und die Delay-Balken der CTR zusammen.
+          const sta = req;
           it.sta = sta;
           it.reqSta = req;
           it.delay = req - it.eta;

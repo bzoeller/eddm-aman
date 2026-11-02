@@ -16,7 +16,7 @@ Die Oberfläche ist englisch, diese Anleitung deutsch.
 
 ## Datenquellen
 
-- **Simulation:** erzeugt Anflugverkehr über die vier IAFs, einstellbar im MENU (Rate, Tempo, Bodenwind).
+- **Simulation:** erzeugt Anflugverkehr über die vier IAFs, einstellbar im MENU (Rate, Tempo, Bodenwind). Standard sind 40 Anflüge pro Stunde. Ab etwa 50 pro Stunde ist das mehr, als zwei Bahnen mit FLOW 4,5 NM schaffen, und die Delays wachsen.
 - **EuroScope-Plugin** (Bauen und Installieren: siehe [plugin/README.md](plugin/README.md)): Wird die Seite vom Plugin unter `http://127.0.0.1:8471/` ausgeliefert, holt sie den Verkehr alle 5 Sekunden von `/api/traffic`. Die Rolle (APP, TWR, CTR) folgt aus dem eigenen Callsign. Optional kann das Plugin pro Flieger `arrRwy` (Landebahn aus Flugplan bzw. Tag), `route` (Flugplanroute), `trk` (Kurs über Grund) und `stream` (`DISUN`, `SOTOV`, `AMADI`, `REDBU`) sowie eine Liste `controllers` der eingeloggten Callsigns mitschicken.
 
 ## CTR-Ansichten und Ströme
@@ -96,7 +96,7 @@ APP-Holdings (in `eddm.json` unter `holdings`): ROKIL 126 R, LANDU 213 L, NAPSA 
 
 ## Downwind und Final
 
-Hinter dem IAF steht der Streifen auf der aktuellen Vorhersage. Werden Zeit und Meilen kürzer, rückt er sofort nach, auch im static-Modus. Das passiert etwa, wenn APP früh auf den Base oder direkt aufs Final dreht. Das AMAN erkennt das am Kurs: Schneidet er den Standardpfad weiter vorn und spart dabei mindestens 2 NM (`shortcutMinNm`), rechnet es mit dem kürzeren Weg. Ein Streifen rückt nie näher als die Mindeststaffelung an den Vordermann (2,5 NM oder Wirbelschleppe, `minRadarSepNm`). Überholt ein Flieger einen anderen wirklich, tauschen beide in der Sequenz. Manuell platzierte Flieger bleiben, wo sie sind.
+Der Streifen steht immer auf der geplanten Zeit mit voller Staffelung (FLOW, Wirbelschleppe, Landerate). Werden Zeit und Meilen kürzer, auch im static-Modus, rückt er nach, soweit der Vordermann es zulässt. Das passiert etwa, wenn APP früh auf den Base oder direkt aufs Final dreht. Das AMAN erkennt das am Kurs: Schneidet er den Standardpfad weiter vorn und spart dabei mindestens 2 NM (`shortcutMinNm`), rechnet es mit dem kürzeren Weg. Überholt ein Flieger einen anderen wirklich, tauschen beide in der Sequenz. Manuell platzierte Flieger bleiben, wo sie sind. Weil Schirm und Planung dieselbe Zeit nutzen, passen die CTR-Balken zu dem, was APP sieht: Wer eine Lücke vor sich hat, bekommt keinen Balken.
 
 ## Dateien
 

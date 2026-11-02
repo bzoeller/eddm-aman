@@ -14,7 +14,7 @@
   let cfg, engine, simApi = null;
   let settings = {
     source: isPluginHost ? 'plugin' : 'sim', view: 'auto', theme: 'dark',
-    simRate: 60, simSpeed: 5, simWind: '250/10'
+    simRate: 40, simSpeed: 5, simWind: '250/10'
   };
   let traffic = { aircraft: [] }, me = null, metar = null, aloft = null, lastData = 0, connErr = null, dataTime = null;
   let pollSeq = 0, pollTimer = null, aloftTimer = null;
