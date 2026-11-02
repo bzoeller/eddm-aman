@@ -30,6 +30,9 @@
     const proj = Core.makeProjection(cfg.wind.lat, cfg.wind.lon);
     const paths = Core.preparePaths(cfg, proj);
     const dwPaths = Core.downwindPaths(cfg, paths);
+    // APP-Holdings je IAF (Fix, Inbound-Kurs, Kurvenrichtung)
+    const holdAt = {};
+    for (const h of cfg.holdings || []) if (h.unit === 'APP' && cfg.iafs[h.iaf]) holdAt[h.iaf] = { F: proj.xy(cfg.iafs[h.fix] ? cfg.iafs[h.fix].lat : h.lat, cfg.iafs[h.fix] ? cfg.iafs[h.fix].lon : h.lon), inb: h.inbound, turn: h.turn === 'L' ? -1 : 1 };
     const sim = {
       t: opts.start || Math.floor(Date.now() / 1000),
       rate: opts.rate || 40,
@@ -157,8 +160,12 @@
             // nahe am IAF darf der Flieger auch kreisen (Holding), auf dem Downwind nur strecken
             const floor = ac.s < 3 ? 0 : 0.25;
             const absorbable = tBeforeFinal * (1 / 0.25 - 1) * 0.8;
-            if (ac.s < 3 && info.delay > absorbable) gs = 0; // im Holding am IAF
-            else gs = gs * Math.max(floor, Math.min(1, f));
+            if (ac.s < 3 && info.delay > absorbable && holdAt[ac.iaf]) {
+              // zu viel Delay fuer den Downwind: Warteschleife am IAF (APP-Holding)
+              ac.phase = 'hold'; ac.hp = 0; ac.hold = holdAt[ac.iaf];
+              continue;
+            }
+            gs = gs * Math.max(floor, Math.min(1, f));
           }
           ac.gs = gsTrue;
           // Abkuerzung: ohne Delay vom Downwind direkt auf ein 12-NM-Final
@@ -186,6 +193,20 @@
           if (ac.s >= path.length) ac.phase = 'landed';
         }
       }
+      // Warteschleife: Racetrack mit Inbound-Kurs und Kurvenrichtung aus eddm.json, 1-Minuten-Schenkel
+      for (const ac of sim.aircraft) {
+        if (ac.phase !== 'hold') continue;
+        const H = ac.hold, info = byCs[ac.cs];
+        const gs = 210, L = gs / 60, R = 1.6, per = 2 * L + 2 * Math.PI * R;
+        ac.hp += gs * dt / 3600;
+        // raus, wenn das Delay auf dem Downwind aufgenommen werden kann, und nur am Fix
+        if (ac.hp >= per) {
+          ac.hp -= per;
+          if (!info || info.delay <= Math.max(60, info.tIafToThr * 0.6)) { ac.phase = 'path'; ac.s = 0; ac.x = H.F.x; ac.y = H.F.y; ac.hold = null; continue; }
+        }
+        const q = racetrack(H, ac.hp, L, R);
+        ac.x = q.x; ac.y = q.y; ac.hdg = q.hdg; ac.gs = gs;
+      }
       for (const ac of sim.aircraft) {
         if (ac.phase !== 'direct') continue;
         const T = Core.pointAt(ac.path, ac.sT);
@@ -209,7 +230,7 @@
         // keine activeDir: in der Simulation gibt es kein EuroScope, das eine Richtung melden koennte
         aircraft: sim.aircraft.map(a => {
           const p = proj.ll(a.x, a.y);
-          return { cs: a.cs, type: a.type, wtc: a.wtc, lat: p.lat, lon: p.lon, alt: Math.round(a.alt), gs: Math.round(a.gs), hdg: a.hdg, iaf: a.iaf, route: a.route, arrRwy: a.esRwy || undefined, passedIaf: a.phase === 'path' || a.phase === 'direct' };
+          return { cs: a.cs, type: a.type, wtc: a.wtc, lat: p.lat, lon: p.lon, alt: Math.round(a.alt), gs: Math.round(a.gs), hdg: a.hdg, iaf: a.iaf, route: a.route, arrRwy: a.esRwy || undefined, passedIaf: a.phase === 'path' || a.phase === 'direct' || a.phase === 'hold', inHold: a.phase === 'hold' || undefined };
         })
       };
     }
@@ -218,6 +239,29 @@
     function setRunway(cs, rwy) { const a = sim.aircraft.find(x => x.cs === cs); if (a) a.esRwy = rwy; return !!a; }
 
     return { sim, step, traffic, prefill, spawn, setRunway };
+  }
+
+  /** Punkt auf dem Racetrack: Start am Fix, Kurve weg, Outbound, Kurve zurueck, Inbound bis zum Fix. */
+  function racetrack(H, p, L, R) {
+    const rad = d => d * Math.PI / 180;
+    const inb = H.inb, out = (inb + 180) % 360, side = (inb + 90 * H.turn + 360) % 360;
+    const u = (d, n) => ({ x: Math.sin(rad(d)) * n, y: Math.cos(rad(d)) * n });
+    const C1 = { x: H.F.x + u(side, R).x, y: H.F.y + u(side, R).y };           // Mittelpunkt erste Kurve
+    const arc = Math.PI * R;
+    if (p < arc) {                       // Kurve 1: vom Fix auf den Outbound-Kurs
+      const a = p / R, ang = (side + 180 + H.turn * a * 180 / Math.PI + 360) % 360;
+      return { x: C1.x + u(ang, R).x, y: C1.y + u(ang, R).y, hdg: (inb + H.turn * a * 180 / Math.PI + 360) % 360 };
+    }
+    const E1 = { x: H.F.x + u(side, 2 * R).x, y: H.F.y + u(side, 2 * R).y };    // Ende Kurve 1
+    if (p < arc + L) { const d = p - arc; return { x: E1.x + u(out, d).x, y: E1.y + u(out, d).y, hdg: out }; }
+    const E2 = { x: E1.x + u(out, L).x, y: E1.y + u(out, L).y };
+    const C2 = { x: E2.x - u(side, R).x, y: E2.y - u(side, R).y };
+    if (p < 2 * arc + L) {
+      const a = (p - arc - L) / R, ang = (side + H.turn * a * 180 / Math.PI + 360) % 360;
+      return { x: C2.x + u(ang, R).x, y: C2.y + u(ang, R).y, hdg: (out + H.turn * a * 180 / Math.PI + 360) % 360 };
+    }
+    const S = { x: H.F.x - u(inb, L).x, y: H.F.y - u(inb, L).y }, d = p - 2 * arc - L;
+    return { x: S.x + u(inb, d).x, y: S.y + u(inb, d).y, hdg: inb };
   }
 
   function mulberry(a) {

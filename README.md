@@ -40,9 +40,9 @@ Label-Farben (Box = IAF, Schrift = Strom):
 | AMADI Q113 NAPSA | rot | weiß |
 | REDBU Q112 NAPSA | rot | rot |
 
-Den Strom erkennt das AMAN aus der Flugplanroute (Feld `route`, z. B. `... DISUN T103 BETOS`). Fehlt die Route, schätzt es den Strom bei BETOS aus der Peilung vom IAF (DISUN 220° bis 360°, SOTOV 90° bis 220°, einstellbar in `eddm.json` unter `iafs.BETOS.streams`). Bei NAPSA nimmt es den Einflugpunkt, dessen Peilung vom IAF am besten passt (AMADI 098°, REDBU 121°, Koordinaten unter `fix`). Bei LANDU geht es nur über die Route, solange die Koordinaten von LULAR, NIRGO und VESUB fehlen. Combined wird automatisch gewählt, wenn das Plugin `controllers` liefert. Sonst stellt man die Ansicht im Menü (EXIT) fest ein.
+Den Strom erkennt das AMAN aus der Flugplanroute (Feld `route`, z. B. `... DISUN T103 BETOS`). Fehlt die Route, nimmt es den Einflugpunkt, dessen Peilung vom IAF am besten zur Position passt (Koordinaten unter `fix`): BETOS mit DISUN 218° und SOTOV 185°, NAPSA mit AMADI 098° und REDBU 121°, LANDU mit LULAR 023°, VESUB 030° und NIRGO 038°. Bei LANDU liegen die Punkte nah beieinander, dort ist die Route deutlich zuverlässiger. Combined wird automatisch gewählt, wenn das Plugin `controllers` liefert. Sonst stellt man die Ansicht im MENU fest ein.
 
-In der hellen Version (EXIT → Darstellung) wird weiße Schrift schwarz, Gelb und Weiß werden für den Kontrast abgedunkelt.
+In der hellen Version (MENU → Darstellung) wird weiße Schrift schwarz, Gelb und Weiß werden für den Kontrast abgedunkelt.
 
 ## Bedienung (als APP)
 
@@ -54,7 +54,8 @@ In der hellen Version (EXIT → Darstellung) wird weiße Schrift schwarz, Gelb u
 - `static` / `dynamic`: Planung vor dem IAF einfrieren oder laufen lassen.
 - FLOW: Abstand in NM pro Bahn.
 - Klick auf den RWY-Kasten: Runway Change und Bahnsperre (siehe unten).
-- EXIT: Einstellungen (Datenquelle, Ansicht, Darstellung hell oder dunkel, Staffelung, Simulation).
+- MENU: Einstellungen (Datenquelle, Ansicht, Darstellung hell oder dunkel, Staffelung, Simulation).
+- UNDO (oder Strg+Z): nimmt den letzten Eingriff zurück (Verschieben, HOLD, CHANGE RWY, RECOMPUTE, static/dynamic, Sperre, Runway Change).
 
 ## Runway Change und Bahnsperre
 
@@ -76,6 +77,20 @@ Beides stellt APP über einen Klick auf den RWY-Kasten ein. Alle Zeiten sind UTC
   - Bis dorthin zählt der direkte Weg nach Kurs (sonst der kürzeste Weg) zum Eintrittspunkt auf dem neuen Downwind. Base und Final sind als Eintritt ausgeschlossen.
   - Ab Erreichen des neuen Downwinds gilt das Standardprofil von dort.
 - **Final erst ab 7000 ft:** Ein Flieger gilt erst ab 7000 ft oder darunter als auf dem Final (`profile.finalMaxAltFt`). Wer höher die Anfluglinie kreuzt, wird nicht aufs Final gerechnet.
+
+## Holdings
+
+APP-Holdings (in `eddm.json` unter `holdings`): ROKIL 126 R, LANDU 213 L, NAPSA 273 L, BETOS 067 R (Inbound-Kurs und Kurvenrichtung). OTT und MIQ werden nicht geplant. In der Simulation fliegen Flieger, deren Delay sich auf dem Downwind nicht mehr aufnehmen lässt, dort echte Warteschleifen und verlassen sie am Fix, sobald das Rest-Delay passt.
+
+## Schutz vor Fehlbedienung und Datenfehlern
+
+- Ziehen beginnt erst ab 12 px Bewegung, beim Ziehen zeigt eine gestrichelte Linie die Einfügestelle. Ein verschobener Flieger ist danach 5 s markiert.
+- Bahnsperre und Runway Change zeigen vor dem Setzen, was passiert (z. B. „Nord 26R gesperrt 11:20 bis 11:50. 9 Anflüge betroffen“), und brauchen einen zweiten Klick (BESTAETIGEN). Auch Aufheben braucht einen zweiten Klick.
+- Daten vom Plugin werden geprüft: kaputte Datensätze werden verworfen, Callsigns und Texte werden nie als HTML eingesetzt. Abfrage mit 4 s Timeout, eine ältere Antwort überschreibt nie eine neuere. Kommen länger als 15 s keine Daten, steht groß „DATA STALE“ am Schirm und die Labels werden ausgegraut.
+- Durchstart: Ein schon als gelandet gezählter Flieger, der wieder steigt, wird neu eingeplant und nicht mehr als Landung gezählt. Ein einzelner leerer Datentakt kurz vor der Schwelle löscht keinen Flieger mehr.
+- Gespeicherte Einstellungen aus älteren Versionen werden geprüft, ungültige Werte durch Standardwerte ersetzt.
+- In der CTR-Ansicht gibt es je Minute Delay einen Balken, bis 10 min (`ctrMaxDelayMin`). Ein rotes „+“ zeigt, dass mehr als 10 min nötig sind. Eine leere CTR-Ansicht zeigt „keine Anfluege“. Passen oben nicht alle Labels auf den Zeitstrahl, zeigt „▲ +N“ die Zahl der übrigen.
+- In der Simulation steht „SIM“ an der Uhr.
 
 ## Downwind und Final
 

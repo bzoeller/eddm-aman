@@ -247,11 +247,32 @@
     };
   }
 
+  /** Gespeicherten Zustand pruefen: nur bekannte Felder mit gueltigen Werten uebernehmen. */
+  function sanitizeState(cfg, s) {
+    if (!s || typeof s !== 'object') return {};
+    const d = cfg.defaults, out = {};
+    const fin = v => typeof v === 'number' && isFinite(v);
+    const perSide = (o, def, lo, hi) => {
+      const v = x => (fin(x) && x >= lo && x <= hi ? x : def);
+      return o && typeof o === 'object' ? { N: v(o.N), S: v(o.S) } : { N: def, S: def };
+    };
+    if (s.dir === '26' || s.dir === '08') out.dir = s.dir;
+    if (typeof s.staticMode === 'boolean') out.staticMode = s.staticMode;
+    if (s.spacing != null) out.spacing = perSide(s.spacing, d.spacingNm, 2.5, 20);
+    if (s.rate != null) out.rate = perSide(s.rate, d.ratePerRwy, 10, 60);
+    if (s.finalGsMode === 'typwind' || s.finalGsMode === 'fixed') out.finalGsMode = s.finalGsMode;
+    if (fin(s.timelineMin) && s.timelineMin >= 20 && s.timelineMin <= 90) out.timelineMin = s.timelineMin;
+    if (Array.isArray(s.closures)) out.closures = s.closures.filter(c => c && (c.side === 'N' || c.side === 'S') && fin(c.from) && fin(c.to) && c.to > c.from);
+    const ch = s.dirChange;
+    if (ch && (ch.to === '26' || ch.to === '08') && fin(ch.at)) out.dirChange = { id: ch.id || ch.at, to: ch.to, at: ch.at };
+    return out;
+  }
+
   function createEngine(cfg, savedState) {
     const proj = makeProjection(cfg.wind.lat, cfg.wind.lon);
     const paths = preparePaths(cfg, proj);
     const dwPaths = downwindPaths(cfg, paths);
-    const st = Object.assign(defaultState(cfg), savedState || {});
+    const st = Object.assign(defaultState(cfg), sanitizeState(cfg, savedState));
     let last = { list: [], bySide: { N: [], S: [] }, byCs: {}, now: 0 };
 
     const iafXY = {};
@@ -263,6 +284,7 @@
     }
 
     function rwyId(side, dir) { return cfg.runways[side].ids[dir]; }
+    function dirOfRwy(r) { for (const sd of SIDES) for (const k of Object.keys(cfg.runways[sd].ids)) if (cfg.runways[sd].ids[k] === r) return k; return null; }
     function sideOfRwy(r) { return SIDES.find(sd => Object.values(cfg.runways[sd].ids).indexOf(r) >= 0) || null; }
     function closedAt(side, t) {
       return st.closures.find(c => c.side === side && t >= c.from && t < c.to) || null;
@@ -331,7 +353,8 @@
         let t = ttgAt(ttg, pr.s) + extra / gs * 3600, rem = along + extra, cut = false;
         // Abkuerzung: Kurs schneidet den Pfad weiter vorn (z. B. frueh auf den Base oder direkt aufs Final)
         const trk = a.trk;
-        if (trk != null) {
+        // nicht im Holding und nicht direkt am IAF (dort zeigt der Kurs oft zufaellig auf den Pfad)
+        if (trk != null && !ac.inHold && pr.s > 3) {
           const hit = rayHit(path, p, trk, pr.s + 1, 30);
           if (hit && hit.s - pr.s > hit.d + cfg.defaults.shortcutMinNm) {
             const tHit = hit.d / gs * 3600 + ttgAt(ttg, hit.s);
@@ -404,8 +427,20 @@
       const seen = {};
       const items = [];
 
-      for (const ac of traffic.aircraft || []) {
-        if (!ac || !ac.cs) continue;
+      const fin = v => typeof v === 'number' && isFinite(v);
+      const list = Array.isArray(traffic && traffic.aircraft) ? traffic.aircraft : [];
+      for (const raw of list) {
+        // kaputte Datensaetze verwerfen, Zahlenfelder bereinigen (ein NaN wuerde die ganze Sequenz verderben)
+        if (!raw || typeof raw.cs !== 'string' || !raw.cs.trim() || !fin(raw.lat) || !fin(raw.lon)) continue;
+        if (Math.abs(raw.lat) > 90 || Math.abs(raw.lon) > 180) continue;
+        const ac = Object.assign({}, raw, {
+          cs: raw.cs.trim().toUpperCase().slice(0, 12),
+          alt: fin(raw.alt) ? raw.alt : null, gs: fin(raw.gs) ? raw.gs : 0,
+          trk: fin(raw.trk) ? raw.trk : null, hdg: fin(raw.hdg) ? raw.hdg : null,
+          type: typeof raw.type === 'string' ? raw.type.slice(0, 4).toUpperCase() : '',
+          wtc: ['L', 'M', 'H', 'J'].indexOf(raw.wtc) >= 0 ? raw.wtc : 'M'
+        });
+        if (seen[ac.cs]) continue;
         seen[ac.cs] = true;
         let a = st.ac[ac.cs];
         if (!a) a = st.ac[ac.cs] = { firstSeen: now };
@@ -438,8 +473,11 @@
         // Nur Aenderungen zaehlen, nicht die Bahn, die EuroScope beim ersten Sehen eintraegt.
         const esR = ac.arrRwy ? String(ac.arrRwy).toUpperCase() : null;
         if (esR) {
-          if (a.esRwy && esR !== a.esRwy) {
+          // Nur ein Seitenwechsel in gleicher Richtung zaehlt (08R -> 08L). Traegt EuroScope nach dem
+          // Drehen der Bahn automatisch eine neue Richtung ein (26L -> 08L), passiert nichts.
+          if (a.esRwy && esR !== a.esRwy && dirOfRwy(esR) && dirOfRwy(esR) === dirOfRwy(a.esRwy)) {
             const sES = sideOfRwy(esR);
+            a.esByCtl = true;
             if (sES && sES !== (a.rwySide || cfg.iafs[iaf].side)) {
               a.rwySide = sES !== cfg.iafs[iaf].side ? sES : null;
               a.locked = false; a.hold = false; a.esChanged = now;
@@ -484,9 +522,15 @@
         if (r.passedIaf && r.viaDownwind) a.passedIaf = true;
         else if (r.passedIaf) { a.passedIaf = true; a.sMin = Math.max(a.sMin || 0, r.sNew - 0.5); }
 
+        // Durchstart: als gelandet gezaehlt, aber wieder in der Luft und steigend -> neu einplanen
+        if (a.landed && ac.alt != null && ac.alt > cfg.elevationFt + 800 && ac.gs > 120) {
+          a.landed = false; a.goAround = now; a.locked = false; a.sMin = 0; a.xMin = 0; a.xOn = false;
+          const k = st.landed.findIndex(l => l.cs === ac.cs);
+          if (k >= 0) { st.cnt = st.cnt || { N: 0, S: 0 }; st.cnt[st.landed[k].side] = Math.max(0, st.cnt[st.landed[k].side] - 1); st.landed.splice(k, 1); }
+        }
         // Landung erkannt
         const onGround = ac.alt != null && ac.alt < cfg.elevationFt + 60 && ac.gs < 70;
-        if ((r.passedIaf && r.remainingNm < 0.4) || (onGround && a.captured)) {
+        if ((r.passedIaf && r.remainingNm < 0.4 && (ac.alt == null || ac.alt < cfg.elevationFt + 400)) || (onGround && a.captured)) {
           if (!a.landed && a.captured) {
             a.landed = true;
             st.landed.push({ cs: ac.cs, side, t: now });
@@ -501,6 +545,7 @@
         if (!a.captured && r.remainingNm <= cfg.defaults.captureNm) a.captured = true;
         if (!a.captured) continue;
 
+        if (!isFinite(r.eta)) continue; // letzte Sicherung gegen kaputte Werte
         items.push({
           cs: ac.cs, type: ac.type || '', wtc: ac.wtc || 'M', iaf, stream: a.stream, viaIaf: a.viaIaf, side,
           dir: acDir, rwy: rwyId(side, acDir), tFinal: r.tFinal, eta: r.eta, etaIaf: r.etaIaf, tIafToThr: r.tIafToThr,
@@ -514,8 +559,9 @@
       for (const cs of Object.keys(st.ac)) {
         const a = st.ac[cs];
         if (seen[cs]) continue;
-        // kurz vor der Schwelle verschwunden (z. B. Tower hat abgemeldet): als gelandet zaehlen
-        if (!a.landed && a.captured && a.lastPassed && a.lastRem < 3) {
+        // kurz vor der Schwelle verschwunden (z. B. Tower hat abgemeldet): erst nach 15 s ohne Daten
+        // als gelandet zaehlen, ein einzelner leerer Datentakt loescht keinen Flieger
+        if (!a.landed && a.captured && a.lastPassed && a.lastRem < 3 && now - (a.lastSeen || 0) >= 15) {
           a.landed = true;
           st.landed.push({ cs, side: a.side, t: a.lastSeen });
           st.cnt = st.cnt || { N: 0, S: 0 };
@@ -606,6 +652,8 @@
           if (it.passedIaf) {
             sta = it.eta;
             if (prevItem) sta = Math.max(sta, prevItem.sta + minSepSeconds(prevItem, it, side, it.dir, winds));
+            let g3 = 0, c3;
+            while ((c3 = closedAt(side, sta)) && g3++ < 20) sta = c3.to;
           }
           it.sta = sta;
           it.reqSta = req;
@@ -692,7 +740,10 @@
     /** Einen Flieger neu planen: Hold, manuelle Bahn und Position aufheben, nach ETA neu einsortieren. */
     function recomputeOne(cs) {
       const a = st.ac[cs]; if (!a) return;
-      a.hold = false; a.locked = false; a.rwySide = null; a.frozenSta = null;
+      a.hold = false; a.locked = false; a.frozenSta = null;
+      // hat der Lotse in EuroScope eine Bahn gesetzt, gilt die, sonst der Standard nach IAF
+      const sES = a.esByCtl && a.esRwy ? sideOfRwy(a.esRwy) : null;
+      a.rwySide = sES && a.iaf && cfg.iafs[a.iaf] && sES !== cfg.iafs[a.iaf].side ? sES : null;
       st.hold = st.hold.filter(c => c !== cs);
       for (const s of SIDES) st.seq[s] = st.seq[s].filter(c => c !== cs);
     }
@@ -755,5 +806,5 @@
     return own.id;
   }
 
-  return { createEngine, downwindPaths, rayHit, streamByRoute, roleFor, ctrSector, parseMetarWind, makeProjection, headwind, tasFromIas, preparePaths, pointAt };
+  return { createEngine, sanitizeState, downwindPaths, rayHit, streamByRoute, roleFor, ctrSector, parseMetarWind, makeProjection, headwind, tasFromIas, preparePaths, pointAt };
 });

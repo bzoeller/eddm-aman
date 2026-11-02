@@ -35,6 +35,12 @@
   { "id": "BETOS", "iaf": "BETOS", "sector": "FUE+STA", "streams": ["DISUN", "SOTOV"], "combine": ["FUE", "STA"], "label": "CTR FUE+STA combined (BETOS)" },
   { "id": "NAPSA", "iaf": "NAPSA", "sector": "LOVV_B", "callsign": "^LOVV_B\\d?_CTR$", "label": "Wien LOVV_B (NAPSA)" }
  ],
+ "holdings": [
+  { "fix": "ROKIL", "iaf": "ROKIL", "unit": "APP", "inbound": 126, "turn": "R" },
+  { "fix": "LANDU", "iaf": "LANDU", "unit": "APP", "inbound": 213, "turn": "L" },
+  { "fix": "NAPSA", "iaf": "NAPSA", "unit": "APP", "inbound": 273, "turn": "L" },
+  { "fix": "BETOS", "iaf": "BETOS", "unit": "APP", "inbound": 67, "turn": "R" }
+ ],
  "iafs": {
   "ROKIL": {
    "lat": 48.51333,
@@ -1239,7 +1245,7 @@
   "timelineMin": 45,
   "captureNm": 220,
   "hysteresisSec": 30,
-  "ctrMaxDelayMin": 5,
+  "ctrMaxDelayMin": 10,
   "finalGsMode": "typwind",
   "fixedFinalGs": 140,
   "bentLineBelowMin": 2,

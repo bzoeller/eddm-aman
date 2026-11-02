@@ -12,11 +12,12 @@
   <main class="scope" id="scope" aria-label="Arrival-Sequenz">
     <div class="frame-title" id="frameTitle">AMAN EDDM</div>
     <div class="scope-bar" aria-hidden="true"><i></i></div>
+    <div class="stale" id="stale" role="alert" hidden></div>
     <div class="cols" id="cols"></div>
   </main>
 
   <aside class="side" id="side" aria-label="Bedienung">
-    <button class="btn-exit" id="btnMenu" type="button" title="Einstellungen">EXIT</button>
+    <button class="btn-exit" id="btnMenu" type="button" title="Einstellungen">MENU</button>
 
     <div class="box rwybox">
       <button class="rwy" id="btnRwy" type="button" aria-haspopup="dialog" title="Runway Change und Bahnsperre">
@@ -32,8 +33,10 @@
     </div>
 
     <div class="dirwarn" id="dirWarn" role="status" hidden></div>
+    <button class="btn-undo" id="btnUndo" type="button" disabled>UNDO</button>
 
     <div class="holdbox" id="holdBox" aria-label="Hold-Feld">
+      <div class="hold-title">HOLD</div>
       <ul class="hold-list" id="holdList"></ul>
       <div class="vscroll" aria-hidden="true"><i></i></div>
     </div>
@@ -44,6 +47,7 @@
 </div>
 
 <div class="acmenu" id="acmenu" role="menu" aria-label="Flieger" hidden></div>
+<div class="insmark" id="insMark" hidden></div>
 
 <div class="dlg-back" id="rwyDlg" hidden>
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="rwyDlgTitle">
@@ -87,6 +91,7 @@
       <button class="btn-act" id="btnAddClosure" type="button">SPERRE SETZEN</button>
       <ul class="cl-list" id="clList"></ul>
     </section>
+    <p class="dlg-info" id="rwyInfo" role="status"></p>
     <p class="dlg-err" id="rwyErr" role="alert"></p>
   </div>
 </div>

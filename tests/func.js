@@ -128,11 +128,15 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
   // Wechsel auf 08 in 3 Minuten (Simzeit)
   const atStr = fmt(hm(simNow) + 3);
   await p.click('#chDir button[data-dir="08"]');
-  await p.fill('#chTime', atStr); await p.click('#btnChSet'); await p.waitForTimeout(200);
+  await p.fill('#chTime', atStr); await p.click('#btnChSet'); await p.waitForTimeout(100);
+  ok(/08 um/.test(await p.textContent('#rwyInfo')) && (await p.textContent('#btnChSet')) === 'BESTAETIGEN', 'Runway Change erst nach Bestaetigung: ' + (await p.textContent('#rwyInfo')));
+  await p.click('#btnChSet'); await p.waitForTimeout(200);
   ok((await p.textContent('#chPlanned')).includes('08 um ' + atStr), 'geplant angezeigt: ' + (await p.textContent('#chPlanned')));
   // Bahnsperre Sued von +20 bis +35 min
   await p.selectOption('#clSide', 'S');
   await p.fill('#clFrom', fmt(hm(simNow) + 20)); await p.fill('#clTo', fmt(hm(simNow) + 35));
+  await p.click('#btnAddClosure'); await p.waitForTimeout(100);
+  ok(/Anfluege betroffen/.test(await p.textContent('#rwyInfo')), 'Sperre zeigt vor dem Setzen, was passiert: ' + (await p.textContent('#rwyInfo')));
   await p.click('#btnAddClosure'); await p.waitForTimeout(200);
   ok((await p.textContent('#clList')).includes(fmt(hm(simNow) + 20) + ' bis ' + fmt(hm(simNow) + 35)), 'Sperre mit Uhrzeit: ' + (await p.textContent('#clList')));
   await p.keyboard.press('Escape'); await p.waitForTimeout(150);
@@ -150,6 +154,16 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
   ok(!(await p.isVisible('#dirWarn')), 'Simulation: keine Warnung, Richtungen stimmen');
   ok(errs.length === 0, 'keine JS-Fehler ' + errs.join(' | '));
 
+  // UNDO nimmt den letzten Eingriff zurueck
+  {
+    const csU = (await labelsIn(p, 'S'))[3];
+    await p.click('.col.S .label[data-cs="' + csU + '"]'); await p.waitForTimeout(150);
+    await p.click('#acmenu button[data-act=hold]'); await p.waitForTimeout(300);
+    ok((await p.$$eval('#holdList li', l => l.map(x => x.textContent))).includes(csU), 'UNDO-Test: ' + csU + ' im Hold');
+    await p.click('#btnUndo'); await p.waitForTimeout(300);
+    ok(!(await p.$$eval('#holdList li', l => l.map(x => x.textContent))).includes(csU) && (await labelsIn(p, 'S')).includes(csU), 'UNDO holt ' + csU + ' zurueck auf Sued');
+  }
+
   // 11) EuroScope dreht das AMAN nicht: Simulation meldet 08, AMAN bleibt 26 und zeigt eine Warnung
   const w = await b.newPage({ viewport: { width: 1400, height: 900 } });
   w.on('pageerror', e => errs.push(e.message));
@@ -158,10 +172,11 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
     Object.defineProperty(window, 'AmanSim', {
       configurable: true,
       get() { return real; },
-      set(v) { real = { createSim: (c, o) => { const x = v.createSim(c, o); const t = x.traffic; x.traffic = () => Object.assign(t(), { activeDir: '08' }); return x; } }; }
+      set(v) { real = { createSim: (c, o) => { const x = v.createSim(c, o); const t = x.traffic; x.traffic = () => { const d = Object.assign(t(), { activeDir: '08' }); if (d.aircraft[0]) d.aircraft[0] = Object.assign({}, d.aircraft[0], { cs: '<img src=x onerror=window.__xss=1>' }); return d; }; return x; } }; }
     });
   });
   await w.goto(URL); await w.waitForTimeout(1500);
+  ok(await w.evaluate(() => window.__xss === undefined) && (await w.$$eval('.label .cs', l => l.some(x => x.textContent.startsWith('<IMG')))), 'Callsign mit HTML wird als Text gezeigt, nicht ausgefuehrt');
   const warnTxt = await w.textContent('#dirWarn');
   ok((await w.textContent('#rwyVal')) === '26', 'AMAN bleibt auf 26, obwohl EuroScope 08 meldet');
   ok(await w.isVisible('#dirWarn') && /EuroScope 08, AMAN 26/.test(warnTxt), 'Warnung am Rand: ' + warnTxt);

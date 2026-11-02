@@ -2,6 +2,11 @@
 (function () {
   'use strict';
   const $ = id => document.getElementById(id);
+  // Fremddaten (Callsigns, Routen) nie roh als HTML einsetzen
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const sel = v => (window.CSS && CSS.escape ? CSS.escape(String(v)) : String(v).replace(/["\\]/g, '\\$&'));
+  const flash = {};          // Callsign -> bis wann hervorheben (nach einem Eingriff)
+  const undoStack = [];      // letzte Eingriffe zum Zuruecknehmen
   const STORE_KEY = 'eddm-aman-v1';
   const SVGNS = 'http://www.w3.org/2000/svg';
   const isPluginHost = /^(127\.0\.0\.1|localhost)$/.test(location.hostname) && location.port === '8471';
@@ -11,7 +16,8 @@
     source: isPluginHost ? 'plugin' : 'sim', view: 'auto', theme: 'dark',
     simRate: 60, simSpeed: 5, simWind: '250/10'
   };
-  let traffic = { aircraft: [] }, me = null, metar = null, aloft = null, lastData = 0, connErr = null;
+  let traffic = { aircraft: [] }, me = null, metar = null, aloft = null, lastData = 0, connErr = null, dataTime = null;
+  let pollSeq = 0, pollTimer = null, aloftTimer = null;
   let curView = null, colEls = {}, drag = null, timer = null, lastTick = 0, online = null;
   const refreshMs = () => 1000 * ((cfg && cfg.defaults.refreshSec) || 5);
 
@@ -52,7 +58,7 @@
 
   // ---------- Datenquellen ----------
   function startSource() {
-    clearInterval(timer);
+    clearInterval(timer); clearTimeout(pollTimer); pollTimer = null;
     if (settings.source === 'sim') {
       const [d, s] = settings.simWind.split('/').map(Number);
       simApi = AmanSim.createSim(cfg, {
@@ -66,10 +72,11 @@
       timer = setInterval(tickSim, 250);
     } else {
       simApi = null;
+      clearTimeout(pollTimer); clearInterval(aloftTimer);
       pollPlugin();
-      timer = setInterval(pollPlugin, refreshMs());
+      timer = setInterval(() => tick(true), 1000); // Uhr und Hinweis auf veraltete Daten laufen weiter
       fetchAloft();
-      setInterval(fetchAloft, 30 * 60 * 1000);
+      aloftTimer = setInterval(fetchAloft, 30 * 60 * 1000);
     }
     tick();
   }
@@ -82,15 +89,36 @@
     if (Date.now() - lastTick >= refreshMs()) tick();
   }
 
+  /** Abfrage beim Plugin: alle 5 s, mit Timeout; eine aeltere Antwort ueberschreibt nie eine neuere. */
   function pollPlugin() {
-    fetch('/api/traffic', { cache: 'no-store' }).then(r => r.json()).then(d => {
-      me = d.me || null; metar = d.metar || null; lastData = Date.now(); connErr = null;
-      online = Array.isArray(d.controllers) ? d.controllers.map(c => (c && c.callsign) || c) : null;
-      const rw = d.arrRwys || [];
-      traffic = { aircraft: d.aircraft || [], activeDir: rw.some(r => /^08/.test(r)) ? '08' : (rw.some(r => /^26/.test(r)) ? '26' : null) };
+    if (simApi || settings.source !== 'plugin') return;
+    const my = ++pollSeq;
+    const ctl = new AbortController();
+    const to = setTimeout(() => ctl.abort(), 4000);
+    fetch('/api/traffic', { cache: 'no-store', signal: ctl.signal }).then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(d => {
+      if (my !== pollSeq) return;
+      if (!d || typeof d !== 'object') throw new Error('leere Antwort');
+      me = d.me && typeof d.me === 'object' ? d.me : null;
+      metar = typeof d.metar === 'string' ? d.metar : null;
+      online = Array.isArray(d.controllers) ? d.controllers.map(c => (c && c.callsign) || c).filter(c => typeof c === 'string') : null;
+      const rw = Array.isArray(d.arrRwys) ? d.arrRwys.map(String) : [];
+      traffic = { aircraft: Array.isArray(d.aircraft) ? d.aircraft : [], activeDir: rw.some(r => /^08/.test(r)) ? '08' : (rw.some(r => /^26/.test(r)) ? '26' : null) };
+      dataTime = typeof d.time === 'number' && isFinite(d.time) ? d.time : Date.now() / 1000;
+      lastData = Date.now(); connErr = null;
       tick();
-    }).catch(e => { connErr = 'Keine Verbindung zum Plugin'; tick(); });
+    }).catch(e => {
+      if (my !== pollSeq) return;
+      connErr = e && e.name === 'AbortError' ? 'Plugin antwortet nicht' : 'Keine Verbindung zum Plugin (' + ((e && e.message) || 'Fehler') + ')';
+      tick();
+    }).finally(() => {
+      clearTimeout(to);
+      if (my === pollSeq && !simApi) pollTimer = setTimeout(pollPlugin, refreshMs());
+    });
   }
+  const staleSec = () => (simApi ? 0 : lastData ? (Date.now() - lastData) / 1000 : Infinity);
 
   function fetchAloft() {
     const u = 'https://api.open-meteo.com/v1/dwd-icon?latitude=' + cfg.wind.lat + '&longitude=' + cfg.wind.lon +
@@ -107,13 +135,17 @@
     const sfc = AmanCore.parseMetarWind(metar);
     return { surface: sfc || aloft || { dir: 0, spd: 0 }, aloft: aloft || sfc || { dir: 0, spd: 0 } };
   }
-  function nowSec() { return simApi ? simApi.sim.t : Date.now() / 1000; }
+  // Rechenzeit = Zeitpunkt der Daten (nicht die Uhr beim Klick), sonst springen ETAs bei jedem Eingriff
+  function nowSec() { return simApi ? simApi.sim.t : (dataTime || Date.now() / 1000); }
 
-  function tick() {
+  function tick(fromTimer) {
     if (drag) return; // waehrend Drag & Drop nicht neu zeichnen
+    // Plugin-Modus: neu rechnen nur mit neuen Daten oder nach einem Eingriff, sonst nur Uhr und Hinweise
+    if (fromTimer && !simApi && engine.last.now && dataTime === engine.last.dataTime) { renderLive(); return; }
     lastTick = Date.now();
     const tr = simApi ? simApi.traffic() : traffic;
     engine.update(tr, nowSec(), currentWinds());
+    engine.last.dataTime = dataTime;
     render();
   }
 
@@ -167,15 +199,16 @@
     const nm = document.createElement('span'); nm.className = 'col-name'; nm.textContent = name;
     const tag = document.createElement('button'); tag.type = 'button'; tag.className = 'tag'; tag.textContent = 'static';
     tag.id = 'static' + side;
-    tag.addEventListener('click', () => { if (canEdit()) { engine.setStatic(!engine.state.staticMode); save(); tick(); } });
+    tag.addEventListener('click', () => { if (canEdit()) { snapshot(engine.state.staticMode ? 'dynamic' : 'static'); engine.setStatic(!engine.state.staticMode); save(); tick(); } });
     if (side === 'N') { head.appendChild(nm); head.appendChild(tag); } else { head.appendChild(tag); head.appendChild(nm); }
     el.appendChild(head);
-    let flowInput = null;
+    let flowInput = null, flowEl = null;
     if (side !== 'C') {
       const flow = document.createElement('label');
       flow.className = 'flow';
       flow.setAttribute('for', 'flow' + side);
       flow.innerHTML = '<span>FLOW</span>';
+      flowEl = flow;
       flowInput = document.createElement('input');
       flowInput.type = 'number'; flowInput.step = '0.5'; flowInput.min = '2.5'; flowInput.max = '20'; flowInput.id = 'flow' + side;
       flowInput.setAttribute('aria-label', 'Abstand ' + name + ' in NM');
@@ -186,7 +219,7 @@
       flow.appendChild(flowInput);
       el.appendChild(flow);
     }
-    return { el, svg, tag, flowInput, side, labels: {}, closeBtns: [] };
+    return { el, svg, tag, flowInput, flowEl, side, labels: {}, closeBtns: [] };
   }
 
   function makeScale() {
@@ -233,11 +266,14 @@
       const y = g.y(chg.at);
       if (y >= g.top - 2 && y <= g.y0) {
         s += '<line class="rwyc" x1="0" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="var(--rwyc)" stroke-width="2.5" stroke-dasharray="7 5"/>';
-        s += '<text x="' + W / 2 + '" y="' + (y - 5) + '" text-anchor="middle" fill="var(--rwyc)" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="' + (W < 60 ? 10 : 12) + '">RWY ' + chg.to + '</text>';
+        const fs = W < 60 ? 11 : 15, bw = W < 60 ? W - 4 : 70, by = y - fs - 8;
+        s += '<rect x="' + (W - bw) / 2 + '" y="' + by + '" width="' + bw + '" height="' + (fs + 6) + '" fill="var(--bg)" stroke="var(--rwyc)" stroke-width="1.5"/>';
+        s += '<text x="' + W / 2 + '" y="' + (by + fs + 1) + '" text-anchor="middle" fill="var(--rwyc)" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="' + fs + '">RWY ' + chg.to + '</text>';
       }
     }
     sc.svg.innerHTML = s;
     sc.clock.textContent = hhmm(now);
+    sc.clock.classList.toggle('sim', !!simApi);
   }
 
   function drawClosures(c) {
@@ -257,7 +293,10 @@
         b.title = (c.side === 'N' ? 'Nord ' : 'Sued ') + hhmm(cl.from) + ' bis ' + hhmm(cl.to);
         b.style.top = (yTop + 34) + 'px';
         b.style[c.side === 'N' ? 'left' : 'right'] = '8px';
-        b.addEventListener('click', () => { engine.removeClosure(cl.id); save(); tick(); });
+        b.addEventListener('click', () => {
+          if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'WIRKLICH AUFHEBEN?'; setTimeout(() => { if (b.isConnected) { b.dataset.armed = ''; b.textContent = 'SPERRE AUFHEBEN'; } }, 4000); return; }
+          snapshot('Sperre aufheben'); engine.removeClosure(cl.id); save(); tick();
+        });
         c.el.appendChild(b); c.closeBtns.push(b);
       }
     }
@@ -291,12 +330,20 @@
     let prevT = null;
     const editable = canEdit();
 
+    // FLOW-Kasten unten freihalten, wenn die Labels ihn sonst ueberdecken wuerden
+    const labLeft = pointsRight ? g.W - LEAD - labelW : LEAD, labRight = labLeft + labelW;
+    if (c.flowEl) {
+      const fx0 = c.flowEl.offsetLeft, fx1 = fx0 + c.flowEl.offsetWidth;
+      if (fx1 > labLeft && fx0 < labRight) prevTop = Math.min(prevTop, c.flowEl.offsetTop - 6);
+    }
     const sorted = items.slice().sort((a, b) => a._t - b._t);
+    let shown = 0;
     for (const it of sorted) {
       const ideal = g.y(it._t);
       if (ideal < g.top) break;
       let cy = Math.min(ideal, prevTop - LH / 2 - GAP);
       if (cy < g.top + LH / 2) break; // kein Platz mehr: Label liegt jenseits des Zeitstrahls
+      shown++;
       const gapMin = prevT == null ? 99 : (it._t - prevT) / 60;
       const bent = gapMin < cfg.defaults.bentLineBelowMin || Math.abs(cy - ideal) > 1;
       prevTop = cy - LH / 2; prevT = it._t;
@@ -335,7 +382,9 @@
       const wtc = it.wtc && it.wtc !== 'M' ? it.wtc : '';
       let right;
       if (mode === 'ctr') {
-        right = '<span class="strokes">' + '<i></i>'.repeat(it.ctrStrokes || 0) + '</span>';
+        // ein Balken je Minute, die CTR verlieren soll (bis ctrMaxDelayMin); mehr Delay: "+" dahinter
+        const more = (it.delayIaf || 0) > cfg.defaults.ctrMaxDelayMin * 60 + 30;
+        right = '<span class="strokes">' + '<i></i>'.repeat(it.ctrStrokes || 0) + (more ? '<b>+</b>' : '') + '</span>';
       } else {
         right = '<span class="mi">' + Math.round(it.remainingNm) + '</span>';
       }
@@ -344,15 +393,29 @@
       // Schriftfarbe nach Strom: z. B. SOTOV T101 und REDBU Q112 in der Farbe der Box, sonst weiss
       const sdef = it.stream && cfg.iafs[it.iaf].streams ? cfg.iafs[it.iaf].streams[it.stream] : null;
       const txt = sdef && sdef.text === 'box' ? ' style="color:' + color + '"' : '';
-      const sig = [labelW, LH, pointsRight, it.iaf, it.cs, wtc, txt, mode === 'ctr' ? it.ctrStrokes : Math.round(it.remainingNm), st, man].join('|');
+      const sig = [labelW, LH, pointsRight, it.iaf, it.cs, wtc, txt, mode === 'ctr' ? it.ctrStrokes + ':' + Math.round((it.delayIaf || 0) / 60) : Math.round(it.remainingNm), st, man].join('|');
+      el.classList.toggle('flash', (flash[it.cs] || 0) > Date.now());
       if (el.dataset.sig !== sig) {
         el.dataset.sig = sig;
-        el.innerHTML = labelSvg(labelW, LH, pointsRight, color) + st + man + '<span class="cs"' + txt + '>' + it.cs + '</span><span class="wtc"' + txt + '>' + wtc + '</span>' + right;
+        el.innerHTML = labelSvg(labelW, LH, pointsRight, color) + st + man + '<span class="cs"' + txt + '>' + esc(it.cs) + '</span><span class="wtc"' + txt + '>' + wtc + '</span>' + right;
         el.setAttribute('aria-label', it.cs + (wtc ? ' ' + wtc : '') + (it.stream ? ' via ' + it.stream : '') + ', ' + hhmm(it._t) + (mode === 'ctr' ? ', ' + (it.ctrStrokes || 0) + ' Minuten verlieren' : ', ' + Math.round(it.remainingNm) + ' NM'));
       }
     }
     for (const cs of Object.keys(c.labels)) if (!keep[cs]) { c.labels[cs].remove(); delete c.labels[cs]; }
     c.svg.querySelector('.ln').innerHTML = lines;
+    // Ueberlauf: Flieger, die oben nicht mehr auf den Zeitstrahl passen
+    const over = sorted.length - shown;
+    let om = c.el.querySelector('.overflow');
+    if (!om) { om = document.createElement('div'); om.className = 'overflow'; c.el.appendChild(om); }
+    om.textContent = over > 0 ? '\u25B2 +' + over : '';
+    om.hidden = over <= 0;
+    // in die freie Ecke oben, weg vom static-Tag am Zeitstrahl
+    om.style[pointsRight ? 'left' : 'right'] = '8px';
+    // leere Ansicht von einem Ausfall unterscheiden
+    let em = c.el.querySelector('.empty');
+    if (!em) { em = document.createElement('div'); em.className = 'empty'; c.el.appendChild(em); }
+    em.textContent = sorted.length ? '' : (mode === 'ctr' ? 'keine Anfluege' : '');
+    em.hidden = !!sorted.length || mode !== 'ctr';
   }
 
   function render() {
@@ -398,6 +461,18 @@
     renderHold();
     if (menu && !engine.last.byCs[menu.cs]) closeMenu();
     renderStats('N'); renderStats('S');
+    renderLive();
+    syncUndo();
+    renderStatus();
+  }
+
+  /** Nur Uhr und Daten-Hinweis aktualisieren (Plugin-Modus zwischen zwei Datenpaketen). */
+  function renderLive() {
+    const sec = staleSec(), b = $('stale');
+    const stale = !simApi && sec > 15;
+    b.hidden = !stale;
+    if (stale) b.textContent = 'DATA STALE ' + (isFinite(sec) ? Math.round(sec) + ' s' : '') + (connErr ? ' \u2013 ' + connErr : '');
+    $('scope').classList.toggle('stale', stale);
     renderStatus();
   }
 
@@ -438,7 +513,7 @@
     const wf = x => x ? pad3(x.dir) + '/' + pad(x.spd) : '---';
     const lines = [];
     if (simApi) lines.push('<b>Simulation</b> ' + settings.simRate + '/h, ' + settings.simSpeed + 'x');
-    else lines.push(connErr ? '<b>' + connErr + '</b>' : '<b>' + ((me && me.callsign) || 'nicht verbunden') + '</b> ' + role());
+    else lines.push(connErr ? '<b>' + esc(connErr) + '</b>' : '<b>' + esc((me && me.callsign) || 'nicht verbunden') + '</b> ' + role());
     lines.push('Ansicht ' + viewKey() + (canEdit() ? ', Eingriffe frei' : ', nur Anzeige'));
     lines.push('Wind Boden ' + wf(w.surface) + ', FL100 ' + wf(w.aloft));
     lines.push('Final-GS ' + (engine.state.finalGsMode === 'fixed' ? 'fix 140 kt' : 'Typ und Wind'));
@@ -457,11 +532,12 @@
     el.addEventListener('pointermove', onPointerMove);
     el.addEventListener('pointerup', onPointerUp);
     el.addEventListener('pointercancel', onPointerUp);
+    el.addEventListener('lostpointercapture', onPointerUp);
   }
   function onPointerMove(e) {
     if (!drag) return;
     if (!drag.canMove) return;
-    if (!drag.active && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return;
+    if (!drag.active && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 12) return; // kleine Wackler sind ein Klick
     if (!drag.active) {
       drag.active = true;
       closeMenu();
@@ -473,6 +549,27 @@
     drag.el.style.top = (e.clientY - drag.dy) + 'px';
     $('holdBox').classList.toggle('over', !drag.fromHold && inside($('holdBox'), e.clientX, e.clientY));
     for (const side of ['N', 'S']) if (colEls[side]) colEls[side].el.classList.toggle('over', inside(colEls[side].el, e.clientX, e.clientY));
+    showInsert(e.clientX, e.clientY);
+  }
+  /** Einfuegemarke: zeigt beim Ziehen, zwischen welche Labels der Flieger kommt. */
+  function showInsert(x, y) {
+    const mk = $('insMark');
+    for (const side of ['N', 'S']) {
+      const c = colEls[side];
+      if (!c || !inside(c.el, x, y)) continue;
+      const ls = Object.keys(c.labels).filter(cs => cs !== drag.cs).map(cs => c.labels[cs].getBoundingClientRect()).sort((a, b) => a.top - b.top);
+      let yy = null;
+      for (let i = 0; i < ls.length; i++) {
+        const mid = ls[i].top + ls[i].height / 2;
+        if (y < mid) { yy = i === 0 ? ls[0].top - 3 : (ls[i - 1].bottom + ls[i].top) / 2; break; }
+      }
+      if (yy == null) yy = ls.length ? ls[ls.length - 1].bottom + 3 : y;
+      const r = c.el.getBoundingClientRect();
+      mk.style.left = r.left + 'px'; mk.style.width = r.width + 'px'; mk.style.top = yy + 'px';
+      mk.hidden = false;
+      return;
+    }
+    mk.hidden = true;
   }
   function onPointerUp(e) {
     const d = drag; drag = null;
@@ -480,7 +577,9 @@
     d.el.removeEventListener('pointermove', onPointerMove);
     d.el.removeEventListener('pointerup', onPointerUp);
     d.el.removeEventListener('pointercancel', onPointerUp);
+    d.el.removeEventListener('lostpointercapture', onPointerUp);
     $('holdBox').classList.remove('over');
+    $('insMark').hidden = true;
     d.el.classList.remove('dragging');
     d.el.style.position = '';
     for (const side of ['N', 'S']) if (colEls[side]) colEls[side].el.classList.remove('over');
@@ -490,7 +589,7 @@
     }
     const x = e.clientX, y = e.clientY;
     if (inside($('holdBox'), x, y)) {
-      if (!d.fromHold) engine.toHold(d.cs);
+      if (!d.fromHold) { snapshot('HOLD ' + d.cs); mark(d.cs); engine.toHold(d.cs); }
     } else {
       for (const side of ['N', 'S']) {
         const c = colEls[side];
@@ -504,6 +603,7 @@
           const r = l.getBoundingClientRect();
           if (r.top + r.height / 2 > y) idx++;
         }
+        snapshot('Verschieben ' + d.cs); mark(d.cs);
         engine.moveTo(d.cs, side, idx);
       }
     }
@@ -522,11 +622,11 @@
     if (!canEdit()) return;
     const it = engine.last.byCs[cs];
     if (!it) return;
-    menu = { cs, anchor: anchor || document.querySelector('.label[data-cs="' + cs + '"], #holdList li[data-cs="' + cs + '"]') };
+    menu = { cs, anchor: anchor || document.querySelector('.label[data-cs="' + sel(cs) + '"], #holdList li[data-cs="' + sel(cs) + '"]') };
     const m = $('acmenu');
     const other = it.side === 'N' ? 'S' : 'N';
     const otherRwy = cfg.runways[other].ids[engine.last.dir || '26'];
-    m.innerHTML = '<div class="mt">' + it.cs + ' ' + (it.hold ? 'HOLD' : it.rwy) + '</div>' +
+    m.innerHTML = '<div class="mt">' + esc(it.cs) + ' ' + (it.hold ? 'HOLD' : esc(it.rwy)) + '</div>' +
       '<button type="button" role="menuitem" data-act="rwy">CHANGE RWY ' + otherRwy + '</button>' +
       '<button type="button" role="menuitem" data-act="hold"' + (it.hold ? ' disabled' : '') + '>HOLD</button>' +
       '<button type="button" role="menuitem" data-act="recompute">RECOMPUTE</button>';
@@ -543,11 +643,39 @@
     $('acmenu').hidden = true;
     if (a && a.isConnected) a.focus({ preventScroll: true });
   }
+  /** Zustand vor einem Eingriff merken (fuer UNDO). */
+  function snapshot(what) {
+    const st = engine.state, ac = {};
+    for (const cs of Object.keys(st.ac)) { const a = st.ac[cs]; ac[cs] = { rwySide: a.rwySide || null, locked: !!a.locked, hold: !!a.hold }; }
+    undoStack.push({ what, seq: { N: st.seq.N.slice(), S: st.seq.S.slice() }, hold: st.hold.slice(), ac,
+      closures: JSON.parse(JSON.stringify(st.closures)), dirChange: st.dirChange ? Object.assign({}, st.dirChange) : null, dir: st.dir, staticMode: st.staticMode });
+    if (undoStack.length > 20) undoStack.shift();
+    syncUndo();
+  }
+  function undo() {
+    const u = undoStack.pop();
+    if (!u || !canEdit()) { syncUndo(); return; }
+    const st = engine.state;
+    st.seq = u.seq; st.hold = u.hold; st.closures = u.closures; st.dirChange = u.dirChange; st.dir = u.dir;
+    if (st.staticMode !== u.staticMode) engine.setStatic(u.staticMode);
+    for (const cs of Object.keys(u.ac)) if (st.ac[cs]) Object.assign(st.ac[cs], u.ac[cs]);
+    $('holdList').dataset.sig = '';
+    save(); syncUndo(); tick();
+  }
+  function syncUndo() {
+    const b = $('btnUndo'), u = undoStack[undoStack.length - 1];
+    b.disabled = !u || !canEdit();
+    b.title = u ? 'Zuruecknehmen: ' + u.what + ' (Strg+Z)' : 'Nichts zum Zuruecknehmen';
+  }
+  const mark = cs => { flash[cs] = Date.now() + 5000; };
+
   function menuAction(act) {
     if (!menu) return;
     const cs = menu.cs, it = engine.last.byCs[cs];
     closeMenu();
     if (!it || !canEdit()) return;
+    snapshot((act === 'rwy' ? 'CHANGE RWY ' : act === 'hold' ? 'HOLD ' : 'RECOMPUTE ') + cs);
+    mark(cs);
     if (act === 'rwy') engine.insertByEta(cs, it.side === 'N' ? 'S' : 'N');
     else if (act === 'hold') engine.toHold(cs);
     else if (act === 'recompute') engine.recomputeOne(cs);
@@ -566,7 +694,11 @@
     $('btnMenu').addEventListener('click', openSheet);
     $('btnClose').addEventListener('click', () => { $('sheet').hidden = true; });
     $('sheet').addEventListener('click', e => { if (e.target === $('sheet')) $('sheet').hidden = true; });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('sheet').hidden = true; closeMenu(); } });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { $('sheet').hidden = true; closeMenu(); if (!$('rwyDlg').hidden) closeRwyDlg(); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); undo(); }
+    });
+    $('btnUndo').addEventListener('click', undo);
     $('acmenu').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (b && !b.disabled) menuAction(b.dataset.act); });
     $('acmenu').addEventListener('keydown', e => {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -615,7 +747,19 @@
   }
 
   // ---------- Dialog: Runway Change und Bahnsperre ----------
-  let chTarget = null;
+  let chTarget = null, pending = null; // pending: Eingriff, der noch bestaetigt werden muss
+  /** Zweistufig: erster Klick zeigt, was passiert, zweiter Klick fuehrt aus. */
+  function confirmStep(btn, key, text, label) {
+    if (pending && pending.key === key) { pending = null; btn.textContent = label; return true; }
+    pending = { key };
+    $('rwyErr').textContent = '';
+    $('rwyInfo').textContent = text;
+    btn.textContent = 'BESTAETIGEN';
+    return false;
+  }
+  function affected(side, from, to) {
+    return engine.last.list.filter(i => (side === 'B' || i.side === side) && !i.hold && i.sta >= from && i.sta < to).length;
+  }
   const roundUp = (t, min) => Math.ceil(t / (min * 60)) * min * 60;
   const toInput = t => { const d = new Date(t * 1000); return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()); };
   /** HH:MM (UTC) als naechster Zeitpunkt im Fenster [ref - 12 h, ref + 12 h). */
@@ -637,13 +781,14 @@
     $('clFrom').value = toInput(roundUp(now + 10 * 60, 5));
     $('clTo').value = toInput(roundUp(now + 30 * 60, 5));
     document.querySelector('input[name=chWhen][value=at]').checked = true;
-    document.querySelector('input[name=clWhen][value=now]').checked = true;
+    document.querySelector('input[name=clWhen][value=at]').checked = true;
+    pending = null; $('btnAddClosure').textContent = 'SPERRE SETZEN'; $('btnChSet').textContent = 'RWY CHANGE SETZEN';
     $('rwyErr').textContent = '';
     syncRwyDlg(true);
     $('rwyDlg').hidden = false;
     $('chDir').querySelector('[aria-pressed=true]').focus();
   }
-  function closeRwyDlg() { $('rwyDlg').hidden = true; $('btnRwy').focus(); }
+  function closeRwyDlg() { $('rwyDlg').hidden = true; $('rwyInfo').textContent = ''; pending = null; $('btnRwy').focus(); }
   function syncRwyDlg(full) {
     const cur = engine.last.dir || '26', chg = engine.state.dirChange;
     for (const b of $('chDir').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.dir === chTarget));
@@ -655,7 +800,7 @@
       if (chg) {
         const t = document.createElement('span'); t.textContent = 'Geplant: RWY ' + cur + ' \u2192 ' + chg.to + ' um ' + hhmm(chg.at);
         const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-small'; b.textContent = 'LOESCHEN';
-        b.addEventListener('click', () => { engine.clearDirChange(); save(); tick(); syncRwyDlg(true); });
+        b.addEventListener('click', () => { snapshot('RWY CHANGE loeschen'); engine.clearDirChange(); save(); tick(); syncRwyDlg(true); });
         pl.append(t, b);
       }
     }
@@ -674,7 +819,10 @@
       const t = document.createElement('span');
       t.textContent = (c.side === 'N' ? 'Nord ' + ids('N') : 'Sued ' + ids('S')) + '  ' + hhmm(c.from) + ' bis ' + hhmm(c.to);
       const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-small'; b.textContent = 'AUFHEBEN';
-      b.addEventListener('click', () => { engine.removeClosure(c.id); save(); tick(); syncRwyDlg(true); });
+      b.addEventListener('click', () => {
+        if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'BESTAETIGEN'; return; }
+        snapshot('Sperre aufheben'); engine.removeClosure(c.id); save(); tick(); syncRwyDlg(true);
+      });
       li.append(t, b);
       ul.appendChild(li);
     }
@@ -683,7 +831,19 @@
     const err = m => { $('rwyErr').textContent = m; };
     $('rwyClose').addEventListener('click', closeRwyDlg);
     $('rwyDlg').addEventListener('click', e => { if (e.target === $('rwyDlg')) closeRwyDlg(); });
-    $('rwyDlg').addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); closeRwyDlg(); } });
+    $('rwyDlg').addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.stopPropagation(); closeRwyDlg(); return; }
+      if (e.key !== 'Tab') return;
+      // Fokus bleibt im Dialog
+      const f = [...$('rwyDlg').querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled])')].filter(x => x.offsetParent);
+      if (!f.length) return;
+      const i = f.indexOf(document.activeElement);
+      if (e.shiftKey && (i <= 0)) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
+    });
+    // jede Aenderung an den Eingaben verwirft eine offene Bestaetigung
+    $('rwyDlg').addEventListener('input', () => { if (pending) { pending = null; $('rwyInfo').textContent = ''; $('btnAddClosure').textContent = 'SPERRE SETZEN'; $('btnChSet').textContent = 'RWY CHANGE SETZEN'; } });
+    $('chDir').addEventListener('click', () => { if (pending) { pending = null; $('rwyInfo').textContent = ''; $('btnChSet').textContent = 'RWY CHANGE SETZEN'; } });
     $('chDir').addEventListener('click', e => { const b = e.target.closest('button[data-dir]'); if (b) { chTarget = b.dataset.dir; syncRwyDlg(false); } });
     $('chTime').addEventListener('input', () => { document.querySelector('input[name=chWhen][value=at]').checked = true; });
     $('clFrom').addEventListener('input', () => { document.querySelector('input[name=clWhen][value=at]').checked = true; });
@@ -693,15 +853,19 @@
       const when = document.querySelector('input[name=chWhen]:checked').value;
       if (when === 'now') {
         if (chTarget === cur && !engine.state.dirChange) { err('RWY ' + cur + ' ist bereits aktiv.'); return; }
+        if (!confirmStep($('btnChSet'), 'ch-now-' + chTarget, 'RWY ' + cur + ' \u2192 ' + chTarget + ' SOFORT. ' + engine.last.list.filter(i => !i.passedIaf).length + ' Anfluege werden neu geplant.', 'RWY CHANGE SETZEN')) return;
+        snapshot('RWY CHANGE ' + chTarget);
         engine.setDirChange(chTarget, null);
       } else {
         const at = fromInput($('chTime').value, now);
         if (at == null) { err('Bitte die Uhrzeit als HH:MM (UTC) eingeben, z. B. 14:20.'); return; }
         if (at <= now) { err(hhmm(at) + ' liegt in der Vergangenheit. Fuer sofort "ab jetzt" waehlen.'); return; }
         if (chTarget === cur) { err('RWY ' + cur + ' ist bereits aktiv. Bitte die andere Richtung waehlen.'); return; }
+        if (!confirmStep($('btnChSet'), 'ch-' + chTarget + '-' + at, 'RWY ' + cur + ' \u2192 ' + chTarget + ' um ' + hhmm(at) + '. ' + engine.last.list.filter(i => i.sta >= at).length + ' Anfluege landen danach.', 'RWY CHANGE SETZEN')) return;
+        snapshot('RWY CHANGE ' + chTarget + ' ' + hhmm(at));
         engine.setDirChange(chTarget, at);
       }
-      err(''); save(); tick(); syncRwyDlg(true);
+      err(''); $('rwyInfo').textContent = 'Gesetzt.'; save(); tick(); syncRwyDlg(true);
     });
     $('btnAddClosure').addEventListener('click', () => {
       if (!canEdit()) return;
@@ -712,9 +876,14 @@
       let to = fromInput($('clTo').value, from + 43200 - 60);
       if (to == null) { err('Bitte das Ende als HH:MM (UTC) eingeben, z. B. 14:50.'); return; }
       if (to <= from) { err('Das Ende muss nach dem Beginn liegen.'); return; }
-      const sides = $('clSide').value === 'B' ? ['N', 'S'] : [$('clSide').value];
+      const sv = $('clSide').value, cur = engine.last.dir || '26';
+      const name = sv === 'B' ? 'beide Bahnen' : (sv === 'N' ? 'Nord ' : 'Sued ') + (sv === 'B' ? '' : cfg.runways[sv].ids[cur]);
+      const txt = name + ' gesperrt ' + hhmm(Math.max(from, now)) + ' bis ' + hhmm(to) + '. ' + affected(sv, Math.max(from, now), to) + ' Anfluege betroffen.';
+      if (!confirmStep($('btnAddClosure'), 'cl-' + sv + '-' + from + '-' + to, txt, 'SPERRE SETZEN')) return;
+      snapshot('Sperre ' + name);
+      const sides = sv === 'B' ? ['N', 'S'] : [sv];
       sides.forEach(x => engine.addClosure(x, Math.max(from, now), to));
-      err(''); save(); tick(); syncRwyDlg(true);
+      err(''); $('rwyInfo').textContent = 'Gesetzt: ' + txt; save(); tick(); syncRwyDlg(true);
     });
   }
 })();
