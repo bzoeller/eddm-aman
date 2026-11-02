@@ -183,7 +183,11 @@
     if (settings.view !== 'auto') return settings.view;
     if (simApi) return 'APP';
     const r = role();
-    if (r === 'CTR') return dynView() ? 'DYN' : (AmanCore.ctrSector(cfg, me && me.callsign, online) || 'APP');
+    if (r === 'CTR') {
+      const d = dynView();
+      if (d && d.parts.length) return 'DYN';
+      return AmanCore.ctrSector(cfg, me && me.callsign, online) || (d ? 'DYN' : 'APP');
+    }
     return r === 'OBS' ? 'TWR' : r;
   }
   /**
@@ -191,14 +195,47 @@
    * IAF trackt (Daten aus EuroScope). So folgt die Ansicht automatisch jeder Sektorkombination (z. B. ALB arbeitet
    * RDG). Ein Strom bleibt nach dem letzten getrackten Flieger noch 10 min in der Ansicht.
    */
-  const myStreams = {};   // Schluessel "IAF:Strom" -> zuletzt getrackt (Datenzeit)
+  const myStreams = {};    // Schluessel "IAF:Strom" -> zuletzt von mir getrackt (Datenzeit)
+  const lastTracker = {};  // Schluessel -> { cs, t }: CTR-Lotse, der zuletzt den naechsten Flieger vor dem IAF trackte
+  const isCtrCs = c => /^(EDMM|LOVV)_[A-Z0-9_]*CTR$/.test(c || '');
+  /** Sektor -> Callsign des Lotsen, der ihn laut OWNER-Liste gerade hat (erster online in der Liste). */
+  function sectorOwners() {
+    if (!Array.isArray(online)) return {};
+    const on = online.map(c => String(c).toUpperCase());
+    const has = s => on.find(c => new RegExp('^(EDMM_' + s + '|' + s + ')\\d?_CTR$').test(c)) || null;
+    const out = {};
+    for (const [sec, list] of Object.entries(cfg.ctrOwners || {})) {
+      if (sec.startsWith('_')) continue;
+      for (const s of list) { const c = has(s); if (c) { out[sec] = c; break; } }
+    }
+    return out;
+  }
   function dynView() {
     const cs = me && me.callsign ? String(me.callsign).toUpperCase() : null;
-    if (!cs || simApi || !engine.last.list) return null;
+    if (!cs || simApi || !engine.last.list || !isCtrCs(cs)) return null;
     const now = engine.last.now;
-    for (const i of engine.last.list) if (i.trackedBy === cs && !i.passedIaf) myStreams[i.iaf + ':' + (i.stream || '')] = now;
-    const keys = Object.keys(myStreams).filter(k => now - myStreams[k] < 600);
-    if (!keys.length) return null;
+    // 1) Tracking: wer den naechsten Flieger eines Stroms vor dem IAF trackt, arbeitet den Strom
+    const nearest = {};
+    for (const i of engine.last.list) {
+      if (i.passedIaf) continue;
+      const k = i.iaf + ':' + (i.stream || '');
+      if (i.trackedBy === cs) myStreams[k] = now;
+      if (isCtrCs(i.trackedBy) && i.etaIaf && (!nearest[k] || i.etaIaf < nearest[k].etaIaf)) nearest[k] = i;
+    }
+    for (const k of Object.keys(nearest)) lastTracker[k] = { cs: nearest[k].trackedBy, t: now };
+    // 2) sonst die OWNER-Liste der Sektordatei fuer den Zubringer-Sektor
+    const owners = sectorOwners(), mine = {};
+    for (const iaf of Object.keys(cfg.iafs)) {
+      const streams = cfg.iafs[iaf].streams ? Object.keys(cfg.iafs[iaf].streams) : [''];
+      for (const st of streams) {
+        const k = iaf + ':' + st, tr = lastTracker[k];
+        const owner = tr && now - tr.t < 600 ? tr.cs : owners[(cfg.ctrFeeders || {})[st || iaf]];
+        if (owner === cs || (myStreams[k] && now - myStreams[k] < 600)) mine[k] = true;
+      }
+    }
+    const keys = Object.keys(mine);
+    const m0 = /^(?:EDMM_|LOVV_)([A-Z0-9]+)_CTR$/.exec(cs);
+    if (!keys.length) return { id: 'DYN', label: 'CTR ' + (m0 ? m0[1] : cs) + ' (no AMAN stream)', parts: [] };
     const parts = keys.sort().map(k => { const [iaf, stream] = k.split(':'); return { iaf, stream: stream || null }; });
     const m = /^(?:EDMM_|LOVV_)([A-Z0-9]+)_CTR$/.exec(cs);
     const names = parts.map(p => p.stream || p.iaf).join(' ');

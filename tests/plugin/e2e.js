@@ -51,8 +51,17 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await p.click('#btnMenu'); await p.selectOption('#selView', 'TWR'); await p.click('#btnClose');
   cmd('ME EDMM_STA_CTR');
   await p.reload(); await wait(6500);
-  // FUE ist im Testaufbau nicht eingeloggt: STA arbeitet beide BETOS-Stroeme (combined)
-  ok(/combined/.test(await p.textContent('#frameTitle')), 'EDMM_STA_CTR ohne FUE online: Ansicht automatisch ' + (await p.textContent('#frameTitle')));
+  // FUE und ZUG sind nicht eingeloggt: STA arbeitet laut OWNER-Liste auch FUE, also DISUN und SOTOV
+  ok(/CTR STA/.test(await p.textContent('#frameTitle')) && /DISUN/.test(await p.textContent('#frameTitle')) && /SOTOV/.test(await p.textContent('#frameTitle')), 'EDMM_STA_CTR ohne FUE/ZUG online: ' + (await p.textContent('#frameTitle')));
+  // nur ALB online (RDG und EGG nicht): ALB bekommt laut OWNER-Liste die LANDU-Stroeme, ohne dass schon etwas getrackt ist
+  cmd('CTRL EDMM_ALB_CTR EDDM_N_APP'); cmd('ME EDMM_ALB_CTR');
+  await wait(7000);
+  ok(/CTR ALB/.test(await p.textContent('#frameTitle')) && /LULAR/.test(await p.textContent('#frameTitle')) && !/SOTOV|DISUN/.test(await p.textContent('#frameTitle')), 'nur ALB online: ' + (await p.textContent('#frameTitle')));
+  // EGG kommt dazu: RDG-Strom geht an EGG, ALB hat keinen Zubringer mehr
+  cmd('CTRL EDMM_ALB_CTR EDMM_EGG_CTR EDDM_N_APP');
+  await wait(7000);
+  ok(/CTR ALB \(no AMAN stream\)/.test(await p.textContent('#frameTitle')) && (await p.textContent('.col.C .empty')) === 'no arrivals', 'EGG online: LANDU-Stroeme nicht mehr bei ALB (' + (await p.textContent('#frameTitle')) + ')');
+  cmd('CTRL EDDM_N_APP EDMM_STA_CTR');
   // ALB arbeitet RDG mit: ALB trackt die LANDU-Fluege -> ALB bekommt automatisch die LANDU-Stroeme
   cmd('TRACK LANDU EDMM_ALB_CTR'); cmd('ME EDMM_ALB_CTR');
   await wait(7000);

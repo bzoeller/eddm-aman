@@ -27,6 +27,19 @@
    }
   }
  },
+ "ctrOwners": {
+  "_info": "Aus der EDMM-Sektordatei (OWNER-Zeilen, EDMM2611): wer einen Zubringer-Sektor uebernimmt, in dieser Reihenfolge",
+  "NDG": ["NDG", "TRU", "WLD", "ZUG", "RDG"],
+  "RDG": ["RDG", "EGG", "ALB", "WLD", "ZUG"],
+  "FUE": ["FUE", "ZUG", "STA", "TRU", "RDG"],
+  "STA": ["STA", "FUE", "TEG", "TRU", "ZUG", "RDG"],
+  "LOVV_B": ["LOVV_B"]
+ },
+ "ctrFeeders": {
+  "_info": "Zubringer-Sektor je Strom (bzw. IAF ohne Stroeme)",
+  "ROKIL": "NDG", "LULAR": "RDG", "NIRGO": "RDG", "VESUB": "RDG",
+  "DISUN": "FUE", "SOTOV": "STA", "AMADI": "LOVV_B", "REDBU": "LOVV_B"
+ },
  "ctrViews": [
   { "id": "ROKIL", "iaf": "ROKIL", "sector": "NDG", "label": "CTR NDG (ROKIL)" },
   { "id": "LANDU", "iaf": "LANDU", "sector": "RDG", "label": "CTR RDG (LANDU)" },

@@ -19,6 +19,7 @@ static void load(const std::string& file) {
     std::string line;
     while (std::getline(f, line)) {
         if (line.rfind("#ME ", 0) == 0) { world().me = line.substr(4); continue; }
+        if (line.rfind("#CTRL ", 0) == 0) { std::istringstream r(line.substr(6)); std::string x; world().controllers.clear(); while (r >> x) world().controllers.push_back(x); continue; }
         if (line.rfind("#RWY", 0) == 0) { std::istringstream r(line.substr(4)); std::string x; world().arrRwys.clear(); while (r >> x) world().arrRwys.push_back(x); continue; }
         std::vector<std::string> c;
         std::istringstream ss(line);
