@@ -7,7 +7,7 @@ WORK="$(mktemp -d)"; fails=0
 ok() { if [ "$1" = 1 ]; then echo "PASS $2"; else echo "FAIL $2"; fails=$((fails+1)); fi; }
 g++ -std=c++17 -Wall -Wextra -Werror -O1 -I "$ROOT/tests/plugin/es_stub" -I "$ROOT/plugin/src" \
   "$ROOT/plugin/src/AmanPlugin.cpp" "$ROOT/plugin/src/HttpServer.cpp" "$ROOT/plugin/src/PluginMain.cpp" "$ROOT/plugin/src/Updater.cpp" \
-  -DAMAN_VERSION="\"1.0.0\"" "$ROOT/tests/plugin/harness.cpp" -lpthread -o "$WORK/harness"
+  -DAMAN_TEST_BUILD -DAMAN_VERSION="\"1.0.0\"" "$ROOT/tests/plugin/harness.cpp" -lpthread -o "$WORK/harness"
 
 release() {  # $1 = Pruefsumme der DLL ueberschreiben (bad) oder leer
   rm -rf "$WORK/srv"; mkdir -p "$WORK/srv/releases/latest/download" "$WORK/srv/releases/download/v9.9.9"

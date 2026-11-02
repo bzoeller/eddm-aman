@@ -57,6 +57,7 @@ CAmanPlugin::CAmanPlugin(const std::string& pluginDir, const std::string& dllNam
 }
 
 CAmanPlugin::~CAmanPlugin() {
+    stopping_ = true;   // laufendes Update bricht vor dem naechsten Abruf ab
     if (updateThread_.joinable()) updateThread_.join();
     if (server_) server_->stop();
 }
@@ -69,15 +70,23 @@ void CAmanPlugin::QueueMessage(const std::string& text) {
 /** Update im Hintergrund pruefen (beim Start und mit ".aman update"). Meldungen erscheinen im EuroScope-Thread. */
 void CAmanPlugin::StartUpdateCheck(bool manual) {
     if (updating_.exchange(true)) return;
+    if (!applied_.empty()) {   // schon eingespielt, wartet auf den Neustart von EuroScope
+        if (manual) QueueMessage("AMAN " + applied_ + " is installed, restart EuroScope to activate the plug-in.");
+        updating_ = false;
+        return;
+    }
     if (updateThread_.joinable()) updateThread_.join();
     std::string base = AMAN_UPDATE_BASE;
-    if (const char* env = std::getenv("AMAN_UPDATE_BASE")) base = env;   // nur fuer Tests
+#ifdef AMAN_TEST_BUILD
+    if (const char* env = std::getenv("AMAN_UPDATE_BASE")) base = env;   // nur in Testbuilds umlenkbar
+#endif
     updateThread_ = std::thread([this, manual, base] {
-        aman::Updater up(pluginDir_, dllName_, AMAN_VERSION, base, aman::httpGet, [this](const std::string& m) { QueueMessage("AMAN " + m); });
+        auto fetch = [this](const std::string& url, std::string& body) { return !stopping_ && aman::httpGet(url, body); };
+        aman::Updater up(pluginDir_, dllName_, AMAN_VERSION, base, fetch, [this](const std::string& m) { if (!stopping_) QueueMessage("AMAN " + m); });
         up.cleanup();
         std::string v = up.checkAndApply();
-        if (!v.empty()) QueueMessage("AMAN updated to " + v + ": AMAN page is new now (reload with F5), plugin after restarting EuroScope.");
-        else if (manual) QueueMessage(std::string("AMAN ") + AMAN_VERSION + " is up to date.");
+        if (!v.empty()) { applied_ = v; QueueMessage("AMAN updated to " + v + ": AMAN page is new now (reload with F5), plugin after restarting EuroScope."); }
+        else if (manual && !stopping_) QueueMessage(std::string("AMAN ") + AMAN_VERSION + " is up to date.");
         updating_ = false;
     });
 }

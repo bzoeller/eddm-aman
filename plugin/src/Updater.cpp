@@ -1,7 +1,9 @@
 #include "Updater.h"
 
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <thread>
 #include <fstream>
 #include <sstream>
 
@@ -11,7 +13,6 @@
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
 #  include <winhttp.h>
-#  pragma comment(lib, "winhttp.lib")
 #endif
 
 namespace fs = std::filesystem;
@@ -96,7 +97,13 @@ std::string Updater::checkAndApply() {
             fs::remove(old, ec);
             fs::rename(mv.second, old, ec);
         }
-        fs::rename(mv.first, mv.second, ec);
+        // haelt der Webserver eine Datei gerade offen, kurz warten und nochmal versuchen
+        for (int tries = 0; tries < 5; tries++) {
+            ec.clear();
+            fs::rename(mv.first, mv.second, ec);
+            if (!ec) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
         if (ec) { log_("update " + m.version + ": cannot replace " + mv.second.string() + " (" + ec.message() + ")"); return ""; }
     }
     return m.version;
@@ -113,7 +120,7 @@ bool httpGet(const std::string& url, std::string& body) {
     if (!WinHttpCrackUrl(wurl.c_str(), 0, 0, &uc)) return false;
     HINTERNET s = WinHttpOpen(L"EDDM-AMAN-Updater", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!s) return false;
-    WinHttpSetTimeouts(s, 10000, 10000, 15000, 30000);
+    WinHttpSetTimeouts(s, 5000, 5000, 5000, 10000);   // kurz, damit das Entladen des Plugins nicht lange wartet
     bool ok = false;
     HINTERNET c = WinHttpConnect(s, host, uc.nPort, 0);
     if (c) {
@@ -124,14 +131,16 @@ bool httpGet(const std::string& url, std::string& body) {
             WinHttpQueryHeaders(r, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &code, &len, WINHTTP_NO_HEADER_INDEX);
             if (code == 200) {
                 body.clear();
-                DWORD avail = 0;
-                while (WinHttpQueryDataAvailable(r, &avail) && avail > 0) {
+                ok = true;
+                for (;;) {
+                    DWORD avail = 0;
+                    if (!WinHttpQueryDataAvailable(r, &avail)) { ok = false; break; }   // abgebrochen: kein gueltiger Download
+                    if (avail == 0) break;                                               // fertig
                     std::string chunk(avail, '\0');
                     DWORD got = 0;
-                    if (!WinHttpReadData(r, &chunk[0], avail, &got)) break;
+                    if (!WinHttpReadData(r, &chunk[0], avail, &got)) { ok = false; break; }
                     body.append(chunk.data(), got);
                 }
-                ok = true;
             }
         }
         if (r) WinHttpCloseHandle(r);

@@ -40,6 +40,8 @@ private:
     std::string pluginDir_, dllName_;
     std::thread updateThread_;
     std::atomic<bool> updating_{false};
+    std::atomic<bool> stopping_{false};
+    std::string applied_;              // eingespielte, noch nicht aktive Version (nur im Update-Thread geschrieben, danach gelesen)
     std::deque<std::string> pending_;   // Meldungen aus dem Update-Thread, angezeigt im EuroScope-Thread
     std::unique_ptr<aman::HttpServer> server_;
     std::mutex mtx_;

@@ -9,7 +9,6 @@
 #  define WIN32_LEAN_AND_MEAN
 #  include <winsock2.h>
 #  include <ws2tcpip.h>
-#  pragma comment(lib, "Ws2_32.lib")
    typedef SOCKET sock_t;
 #  define CLOSESOCK closesocket
 #else
@@ -69,19 +68,29 @@ bool HttpServer::start(unsigned short port, std::string* error) {
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) { if (error) *error = "WSAStartup failed"; return false; }
 #endif
+    auto fail = [&](sock_t sk, const std::string& msg) {
+        if (sk != INVALID_SOCKET) CLOSESOCK(sk);
+#ifdef _WIN32
+        WSACleanup();
+#endif
+        if (error) *error = msg;
+        return false;
+    };
     sock_t s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (s == INVALID_SOCKET) { if (error) *error = "socket failed"; return false; }
+    if (s == INVALID_SOCKET) return fail(s, "socket failed");
     int yes = 1;
-    ::setsockopt(s, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof yes);
+#ifdef _WIN32
+    // exklusiv: ein zweites EuroScope bekommt "port in use" statt sich den Port zu teilen
+    ::setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&yes), sizeof yes);
+#else
+    ::setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
+#endif
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);  // nur dieser Rechner
-    if (::bind(s, reinterpret_cast<sockaddr*>(&addr), sizeof addr) != 0 || ::listen(s, 16) != 0) {
-        CLOSESOCK(s);
-        if (error) *error = "port " + std::to_string(port) + " is in use";
-        return false;
-    }
+    if (::bind(s, reinterpret_cast<sockaddr*>(&addr), sizeof addr) != 0 || ::listen(s, 16) != 0)
+        return fail(s, "port " + std::to_string(port) + " is in use");
     listenSock_ = static_cast<long long>(s);
     running_ = true;
     thread_ = std::thread([this] { loop(); });
@@ -115,13 +124,16 @@ void HttpServer::loop() {
 
 void HttpServer::handle(long long client) {
     sock_t c = static_cast<sock_t>(client);
-    // Zeitlimit beim Lesen, damit ein haengender Client den Server nicht blockiert
+    // Zeitlimits: ein Client, der nichts schickt (Browser oeffnen Verbindungen auf Vorrat) oder nicht liest,
+    // darf den Server und damit das Entladen des Plugins nicht blockieren
 #ifdef _WIN32
-    DWORD tv = 2000;
-    ::setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv), sizeof tv);
+    DWORD rtv = 500, stv = 2000;
+    ::setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&rtv), sizeof rtv);
+    ::setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&stv), sizeof stv);
 #else
-    timeval tv{2, 0};
-    ::setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    timeval rtv{0, 500000}, stv{2, 0};
+    ::setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &rtv, sizeof rtv);
+    ::setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &stv, sizeof stv);
 #endif
     std::string req;
     char buf[2048];

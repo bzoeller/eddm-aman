@@ -29,6 +29,11 @@ LicenseFile=..\LICENSE
 Source: "{#Dist}\EDDM-AMAN.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Dist}\web\*"; DestDir: "{app}\web"; Flags: ignoreversion recursesubdirs
 
+[UninstallDelete]
+Type: files; Name: "{app}\*.old"
+Type: files; Name: "{app}\*.new"
+Type: files; Name: "{app}\web\*.new"
+
 [Run]
 Filename: "{app}"; Description: "Open the plug-in folder"; Flags: postinstall shellexec skipifsilent unchecked
 
