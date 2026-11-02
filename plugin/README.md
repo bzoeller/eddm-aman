@@ -22,13 +22,13 @@ Das Skript nimmt die Dateien aus `%APPDATA%\EuroScope\PlugIn`. Liegen sie woande
 ## Bauen (einmalig, unter Windows)
 
 Du brauchst:
-- **Visual Studio 2022** (Community reicht) mit der Arbeitslast „Desktopentwicklung mit C++“
+- **Visual Studio 2022 oder neuer** (Community reicht) mit der Arbeitslast „Desktopentwicklung mit C++“
 - **CMake** (ist in Visual Studio enthalten)
 - das **EuroScope-Plugin-SDK**: die Dateien `EuroScopePlugIn.h` und `EuroScopePlugInDll.lib`. Sie sind nicht in diesem Repo, weil sie zu EuroScope gehören. Sie liegen dem EuroScope-Download bzw. der EuroScope-Installation bei (Ordner mit „PlugIn“ im Namen). Falls du sie dort nicht findest, gibt es sie auf der EuroScope-Webseite im Bereich für Plugin-Entwickler.
 
 Schritte:
 1. Kopiere `EuroScopePlugIn.h` und `EuroScopePlugInDll.lib` in den Ordner `plugin/sdk/` dieses Repos.
-2. Öffne die „Developer PowerShell for VS 2022“ (Startmenü) und wechsle in den Repo-Ordner.
+2. Öffne die „Developer PowerShell for VS“ (Startmenü) und wechsle in den Repo-Ordner.
 3. Konfigurieren, **32 Bit** (EuroScope ist ein 32-Bit-Programm):
    ```
    cmake -S plugin -B build -A Win32
@@ -39,28 +39,12 @@ Schritte:
    ```
 5. Ergebnis in `build\Release\`: `EDDM-AMAN.dll` und daneben der Ordner `web\` mit der AMAN-Seite. Beides gehört zusammen.
 
-Hinweis: Den Plugin-Code habe ich unter Linux gegen einen Nachbau der EuroScope-Schnittstelle gebaut und mit dem AMAN im Browser getestet (`tests/plugin/run.sh`). Gegen das echte SDK unter Windows ist er noch nicht gebaut worden. Falls der Compiler beim ersten Bauen über einzelne Funktionen meckert, schick mir die Fehlermeldung.
-
-## Neue Version einspielen
-
-1. Neue ZIP von GitHub laden und über den Repo-Ordner entpacken (Dateien ersetzen). Der Ordner `plugin\sdk` bleibt erhalten.
-2. In der „Developer PowerShell for VS 2022/2026“ im Repo-Ordner: `cmake --build build --config Release`. Das kopiert auch die Webseite neu nach `build\Release\web`.
-3. Den Ordner `build\Release\web` an den Plugin-Ort kopieren (Dateien ersetzen), dann die AMAN-Seite im Browser neu laden (F5).
-4. Nur wenn sich die DLL geändert hat: EuroScope schließen, `EDDM-AMAN.dll` ersetzen, EuroScope starten. Solange EuroScope läuft, ist die DLL gesperrt.
-
-## Installieren und öffnen
-
-1. Kopiere `EDDM-AMAN.dll` und den Ordner `web` zusammen an einen festen Ort, z. B. `Dokumente\EuroScope\Plugins\EDDM-AMAN\`.
-2. In EuroScope: **OTHER SET → Plug-ins… → Load** und `EDDM-AMAN.dll` auswählen. In der Nachrichtenzeile erscheint „AMAN running: http://127.0.0.1:8471/“.
-3. AMAN öffnen: in der EuroScope-Befehlszeile `.aman` eingeben. Das öffnet ein eigenes Fenster (Edge im App-Modus, ohne Adressleiste). Alternativ im Browser `http://127.0.0.1:8471/` aufrufen. Am besten als halbes Fenster auf dem Zweitschirm.
-4. Damit das Plugin beim nächsten Start automatisch geladen wird, im Plug-ins-Dialog das Profil speichern (wie bei anderen Plugins).
-
-Meldet EuroScope „AMAN could not start: port 8471 is in use“, läuft schon ein anderes Programm (oder ein zweites EuroScope) auf diesem Port.
+Den fertigen Installer baut GitHub beim Release (siehe [CONTRIBUTING.md](../CONTRIBUTING.md)). Lotsen installieren über die Setup-Datei, siehe [README](../README.md).
 
 ## Testen ohne EuroScope (Linux)
 
 ```bash
-tests/plugin/run.sh
+npm run test:plugin
 ```
 
 Baut den Plugin-Code gegen den Test-Nachbau in `tests/plugin/es_stub/`, füttert ihn mit Verkehr aus der AMAN-Simulation und prüft den AMAN im Browser im Plugin-Modus: Daten, Rolle aus dem Callsign, MISMATCH-Warnung, Bahnwechsel durch den Lotsen, Ausfall des Plugins (DATA STALE) und Schutz vor Dateizugriff außerhalb von `web`.

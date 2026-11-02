@@ -1,0 +1,14 @@
+{
+  "name": "eddm-aman",
+  "private": true,
+  "description": "Arrival manager for Munich (EDDM) on VATSIM",
+  "license": "MIT",
+  "scripts": {
+    "test": "node tests/engine.js && node tests/func.js",
+    "test:plugin": "bash tests/plugin/run.sh && bash tests/plugin/update-test.sh",
+    "test:all": "npm test && npm run test:plugin"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

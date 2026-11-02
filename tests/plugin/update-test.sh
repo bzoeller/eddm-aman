@@ -4,6 +4,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORK="$(mktemp -d)"; fails=0
+UPORT="${AMAN_UPDATE_PORT:-8098}"   # Port des Test-Release-Servers
 ok() { if [ "$1" = 1 ]; then echo "PASS $2"; else echo "FAIL $2"; fails=$((fails+1)); fi; }
 "$ROOT/tests/plugin/build.sh" "$WORK/harness" -DAMAN_VERSION="\"1.0.0\""
 
@@ -22,9 +23,9 @@ setup_plugin() {
   : > "$WORK/traffic.txt"
 }
 run_plugin() {  # laeuft 6 s
-  ( cd "$WORK" && AMAN_UPDATE_BASE="http://127.0.0.1:8098/releases" timeout 6 "$WORK/harness" "$WORK/plugin" "$WORK/traffic.txt" > "$WORK/log.txt" 2>&1 ) || true
+  ( cd "$WORK" && AMAN_UPDATE_BASE="http://127.0.0.1:$UPORT/releases" timeout 6 "$WORK/harness" "$WORK/plugin" "$WORK/traffic.txt" > "$WORK/log.txt" 2>&1 ) || true
 }
-( cd "$WORK" && exec python3 -m http.server 8098 -d "$WORK/srv" > /dev/null 2>&1 ) & SRV=$!
+( cd "$WORK" && exec python3 -m http.server $UPORT -d "$WORK/srv" > /dev/null 2>&1 ) & SRV=$!
 trap 'kill $SRV 2>/dev/null || true' EXIT
 mkdir -p "$WORK/srv"; sleep 1
 

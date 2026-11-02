@@ -1,19 +1,42 @@
-// Browsertest fuer das EDDM AMAN.
-// Aufruf: im Repo-Ordner 'python3 -m http.server 8090' starten, dann 'node tests/func.js [Ordner fuer Screenshots]'
+// Browsertest fuer das EDDM AMAN. Aufruf: npm test, oder 'node tests/func.js [Ordner fuer Screenshots]'.
+// Startet selbst einen kleinen Webserver fuer web/ (Port AMAN_PORT, sonst frei gewaehlt).
+// Mit AMAN_URL laeuft der Test gegen eine schon laufende Seite.
 const { chromium } = require('playwright');
-const URL = process.env.AMAN_URL || 'http://localhost:8090/index.html';
-const out = process.argv[2] || '/tmp';
+const http = require('http'), fs = require('fs'), path = require('path'), os = require('os');
+const out = process.argv[2] || os.tmpdir();
 let fails = 0;
 const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m); };
 const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x => x.dataset.cs));
+// warten, bis etwas eintritt (statt fester Pausen); kommt es nicht, entscheidet der folgende Check
+const shown = (p, sel) => p.waitForSelector(sel, { state: 'visible', timeout: 3000 }).catch(() => null);
+const gone = (p, sel) => p.waitForSelector(sel, { state: 'hidden', timeout: 3000 }).catch(() => null);
+const until = (p, fn, arg) => p.waitForFunction(fn, arg, { timeout: 3000 }).catch(() => null);
+const inHold = cs => [...document.querySelectorAll('#holdList li')].some(x => x.dataset.cs === cs);
+const onSide = ([side, cs]) => !!document.querySelector('.col.' + side + ' .label[data-cs="' + cs + '"]');
+
+function serve() {
+  const root = path.join(__dirname, '..', 'web');
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
+  const srv = http.createServer((req, res) => {
+    const f = path.join(root, path.normalize(decodeURIComponent(req.url.split('?')[0])).replace(/^([/\\]\.\.)+/, ''));
+    if (!f.startsWith(root)) { res.writeHead(403); return res.end(); }
+    fs.readFile(f.endsWith(path.sep) ? f + 'index.html' : f, (e, d) => {
+      if (e) { res.writeHead(404); return res.end(); }
+      res.writeHead(200, { 'Content-Type': types[path.extname(f)] || 'application/octet-stream' }); res.end(d);
+    });
+  });
+  return new Promise(r => srv.listen(+process.env.AMAN_PORT || 0, '127.0.0.1', () => r(srv)));
+}
 
 (async () => {
+  const srv = process.env.AMAN_URL ? null : await serve();
+  const URL = process.env.AMAN_URL || 'http://127.0.0.1:' + srv.address().port + '/index.html';
   const b = await chromium.launch();
   const p = await b.newPage({ viewport: { width: 1600, height: 1000 } });
   const errs = [];
   p.on('pageerror', e => errs.push(e.message));
   await p.goto(URL);
-  await p.waitForTimeout(2000);
+  await shown(p, '.col.N .label');
   await p.click('#btnMenu'); await p.selectOption('#simSpeed', '1'); await p.click('#btnClose');
 
   // 1) Anzeige nur alle 5 s: Uhr und Labels bleiben zwischen zwei Updates stehen
@@ -27,52 +50,52 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
   // 2) Klick oeffnet das Menue mit CHANGE RWY, HOLD, RECOMPUTE
   const csN = (await labelsIn(p, 'N'))[3];
   await p.click('.col.N .label[data-cs="' + csN + '"]');
-  await p.waitForTimeout(200);
+  await shown(p, '#acmenu');
   const items = await p.$$eval('#acmenu button', l => l.map(x => x.textContent));
   ok(await p.isVisible('#acmenu') && /CHANGE RWY/.test(items[0]) && items[1] === 'HOLD' && items[2] === 'RECOMPUTE', 'Menue: ' + items.join(' | '));
   await p.screenshot({ path: out + '/menu.png' });
 
   // 3) HOLD
-  await p.click('#acmenu button[data-act=hold]'); await p.waitForTimeout(300);
+  await p.click('#acmenu button[data-act=hold]'); await until(p, inHold, csN);
   ok((await p.$$eval('#holdList li', l => l.map(x => x.textContent))).includes(csN), csN + ' im Hold');
   ok(!(await labelsIn(p, 'N')).includes(csN), csN + ' nicht mehr auf Nord');
 
   // 4) Aus dem Hold per Menue: RECOMPUTE plant ihn wieder nach ETA ein
-  await p.click('#holdList li[data-cs="' + csN + '"]'); await p.waitForTimeout(200);
+  await p.click('#holdList li[data-cs="' + csN + '"]'); await shown(p, '#acmenu');
   ok(await p.$eval('#acmenu button[data-act=hold]', x => x.disabled), 'HOLD im Hold gesperrt');
-  await p.click('#acmenu button[data-act=recompute]'); await p.waitForTimeout(300);
+  await p.click('#acmenu button[data-act=recompute]'); await until(p, cs => !document.querySelector('#holdList li[data-cs="' + cs + '"]'), csN);
   const back = (await labelsIn(p, 'N')).includes(csN) || (await labelsIn(p, 'S')).includes(csN);
   ok(back && !(await p.$$eval('#holdList li', l => l.map(x => x.textContent))).includes(csN), csN + ' per RECOMPUTE zurueck in der Sequenz');
 
   // 5) CHANGE RWY
   const csS = (await labelsIn(p, 'S'))[4];
-  await p.click('.col.S .label[data-cs="' + csS + '"]'); await p.waitForTimeout(200);
-  await p.click('#acmenu button[data-act=rwy]'); await p.waitForTimeout(300);
+  await p.click('.col.S .label[data-cs="' + csS + '"]'); await shown(p, '#acmenu');
+  await p.click('#acmenu button[data-act=rwy]'); await until(p, onSide, ['N', csS]);
   ok((await labelsIn(p, 'N')).includes(csS), csS + ' per CHANGE RWY auf Nord');
   // RECOMPUTE holt ihn auf die Standardbahn zurueck
-  await p.click('.col.N .label[data-cs="' + csS + '"]'); await p.waitForTimeout(200);
-  await p.click('#acmenu button[data-act=recompute]'); await p.waitForTimeout(300);
+  await p.click('.col.N .label[data-cs="' + csS + '"]'); await shown(p, '#acmenu');
+  await p.click('#acmenu button[data-act=recompute]'); await until(p, onSide, ['S', csS]);
   ok((await labelsIn(p, 'S')).includes(csS), csS + ' per RECOMPUTE wieder auf Sued');
 
   // 6) Escape und Klick daneben schliessen das Menue
-  await p.click('.col.S .label >> nth=2'); await p.waitForTimeout(150);
-  await p.keyboard.press('Escape'); await p.waitForTimeout(100);
+  await p.click('.col.S .label >> nth=2'); await shown(p, '#acmenu');
+  await p.keyboard.press('Escape'); await gone(p, '#acmenu');
   ok(!(await p.isVisible('#acmenu')), 'Escape schliesst Menue');
-  await p.click('.col.S .label >> nth=2'); await p.waitForTimeout(150);
+  await p.click('.col.S .label >> nth=2'); await shown(p, '#acmenu');
   const fb = await (await p.$('.rwybox')).boundingBox();
-  await p.mouse.click(fb.x + fb.width / 2, fb.y + fb.height + 30); await p.waitForTimeout(100);
+  await p.mouse.click(fb.x + fb.width / 2, fb.y + fb.height + 30); await gone(p, '#acmenu');
   ok(!(await p.isVisible('#acmenu')), 'Klick daneben schliesst Menue');
 
   // 7) Aus dem Hold auf eine Bahn ziehen
   const csH = (await labelsIn(p, 'S'))[5];
-  await p.click('.col.S .label[data-cs="' + csH + '"]'); await p.waitForTimeout(150);
-  await p.click('#acmenu button[data-act=hold]'); await p.waitForTimeout(300);
+  await p.click('.col.S .label[data-cs="' + csH + '"]'); await shown(p, '#acmenu');
+  await p.click('#acmenu button[data-act=hold]'); await until(p, inHold, csH);
   const lb = await (await p.$('#holdList li')).boundingBox();
   const sb = await (await p.$('.col.S')).boundingBox();
   await p.mouse.move(lb.x + 20, lb.y + 8); await p.mouse.down();
   await p.mouse.move(lb.x + 40, lb.y + 30, { steps: 5 });
   await p.mouse.move(sb.x + sb.width / 2, sb.y + sb.height - 160, { steps: 10 });
-  await p.mouse.up(); await p.waitForTimeout(400);
+  await p.mouse.up(); await until(p, onSide, ['S', csH]);
   ok((await labelsIn(p, 'S')).includes(csH), csH + ' aus dem Hold auf Sued gezogen');
 
   // 8) Ziehen nach vorn landet vorn (nicht hinter Fliegern jenseits des Zeitstrahls)
@@ -118,7 +141,7 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
 
   // 10) Runway Change und Bahnsperre ueber den RWY-Kasten
   await p.click('#btnMenu'); await p.selectOption('#selTheme', 'dark'); await p.selectOption('#simSpeed', '10'); await p.click('#btnClose');
-  await p.click('#btnRwy'); await p.waitForTimeout(200);
+  await p.click('#btnRwy'); await shown(p, '#rwyDlg');
   ok(await p.isVisible('#rwyDlg'), 'Klick auf RWY oeffnet den Dialog');
   const simNow = await p.evaluate(() => document.querySelector('.clock').textContent);
   const hm = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
@@ -140,7 +163,7 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
   ok(/arrivals affected/.test(await p.textContent('#rwyInfo')), 'Sperre zeigt vor dem Setzen, was passiert: ' + (await p.textContent('#rwyInfo')));
   await p.click('#btnAddClosure'); await p.waitForTimeout(200);
   ok((await p.textContent('#clList')).includes('South  ' + fmt(hm(simNow) + 20) + '-' + fmt(hm(simNow) + 35)), 'Sperre mit Uhrzeit: ' + (await p.textContent('#clList')));
-  await p.keyboard.press('Escape'); await p.waitForTimeout(150);
+  await p.keyboard.press('Escape'); await gone(p, '#rwyDlg');
   ok(!(await p.isVisible('#rwyDlg')), 'Escape schliesst den Dialog');
   ok(!!(await p.$('.scale line.rwyc')) && /RWY 08/.test(await p.$eval('.scale svg', x => x.textContent)), 'gruen gestrichelte Linie mit RWY 08 am Zeitstrahl');
   ok((await p.textContent('#rwyNext')).includes('08 ' + atStr), 'RWY-Kasten zeigt den geplanten Wechsel: ' + (await p.textContent('#rwyNext')));
@@ -159,10 +182,10 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
   // UNDO nimmt den letzten Eingriff zurueck
   {
     const csU = (await labelsIn(p, 'S'))[3];
-    await p.click('.col.S .label[data-cs="' + csU + '"]'); await p.waitForTimeout(150);
-    await p.click('#acmenu button[data-act=hold]'); await p.waitForTimeout(300);
+    await p.click('.col.S .label[data-cs="' + csU + '"]'); await shown(p, '#acmenu');
+    await p.click('#acmenu button[data-act=hold]'); await until(p, inHold, csU);
     ok((await p.$$eval('#holdList li', l => l.map(x => x.textContent))).includes(csU), 'UNDO-Test: ' + csU + ' im Hold');
-    await p.click('#btnUndo'); await p.waitForTimeout(300);
+    await p.click('#btnUndo'); await until(p, onSide, ['S', csU]);
     ok(!(await p.$$eval('#holdList li', l => l.map(x => x.textContent))).includes(csU) && (await labelsIn(p, 'S')).includes(csU), 'UNDO holt ' + csU + ' zurueck auf Sued');
   }
 
@@ -177,7 +200,7 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
       set(v) { real = { createSim: (c, o) => { const x = v.createSim(c, o); const t = x.traffic; x.traffic = () => { const d = Object.assign(t(), { activeDir: '08' }); const k = d.aircraft.findIndex(a => a.passedIaf); if (k >= 0) d.aircraft[k] = Object.assign({}, d.aircraft[k], { cs: '<img src=x onerror=window.__xss=1>' }); return d; }; return x; } }; }
     });
   });
-  await w.goto(URL); await w.waitForTimeout(1500);
+  await w.goto(URL); await shown(w, '.label');
   ok(await w.evaluate(() => window.__xss === undefined) && (await w.$$eval('.label .cs', l => l.some(x => x.textContent.startsWith('<IMG')))), 'Callsign mit HTML wird als Text gezeigt, nicht ausgefuehrt');
   const warnTxt = await w.textContent('#dirWarn');
   ok((await w.textContent('#rwyVal')) === '26', 'AMAN bleibt auf 26, obwohl EuroScope 08 meldet');
@@ -188,14 +211,15 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
   // 12) Telefon
   const q = await b.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   q.on('pageerror', e => errs.push(e.message));
-  await q.goto(URL); await q.waitForTimeout(1500);
-  await (await q.$$('.col.S .label'))[2].tap(); await q.waitForTimeout(300);
+  await q.goto(URL); await shown(q, '.col.S .label');
+  await (await q.$$('.col.S .label'))[2].tap(); await shown(q, '#acmenu');
   const mb = await (await q.$('#acmenu')).boundingBox();
   ok(await q.isVisible('#acmenu') && mb.x >= 0 && mb.x + mb.width <= 390, 'Telefon: Menue per Tap, im Bild');
   ok(await q.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Telefon: kein seitliches Scrollen');
   await q.screenshot({ path: out + '/phone.png' });
   ok(errs.length === 0, 'keine JS-Fehler am Telefon ' + errs.join(' | '));
   await b.close();
+  if (srv) srv.close();
   console.log(fails ? fails + ' Fehler' : 'alles gruen');
   process.exit(fails ? 1 : 0);
 })();

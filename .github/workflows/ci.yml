@@ -1,8 +1,9 @@
-# Tests bei jedem Push und Pull Request (Linux, ohne EuroScope-SDK)
+# Tests bei jedem Push und Pull Request (Linux, ohne EuroScope-SDK); der Release-Workflow ruft sie auch auf
 name: Tests
 on:
   push:
   pull_request:
+  workflow_call:
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -13,16 +14,9 @@ jobs:
           node-version: 22
       - name: Playwright und Chromium installieren
         run: |
-          npm install --no-save playwright@1.63.0
+          npm install
           npx playwright install --with-deps chromium
-      - name: Rechenkern
-        run: node tests/engine.js
-      - name: Browser
-        run: |
-          python3 -m http.server 8090 -d web > /dev/null 2>&1 &
-          sleep 1
-          node tests/func.js /tmp
-      - name: Plugin (mit Nachbau der EuroScope-Schnittstelle)
-        run: tests/plugin/run.sh /tmp
-      - name: Plugin-Update
-        run: tests/plugin/update-test.sh
+      - name: Rechenkern und Browser
+        run: npm test
+      - name: Plugin (mit Nachbau der EuroScope-Schnittstelle) und Plugin-Update
+        run: npm run test:plugin

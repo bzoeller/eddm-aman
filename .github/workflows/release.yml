@@ -12,7 +12,10 @@ on:
 permissions:
   contents: write
 jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
   build:
+    needs: test
     runs-on: windows-2022
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -21,34 +24,13 @@ jobs:
       - name: EuroScope-SDK aus den Secrets (gzip + Base64, in Stuecken, siehe tools/set-sdk-secrets.ps1)
         shell: pwsh
         env:
-          ES_SDK_H_1: ${{ secrets.ES_SDK_H_1 }}
-          ES_SDK_H_2: ${{ secrets.ES_SDK_H_2 }}
-          ES_SDK_H_3: ${{ secrets.ES_SDK_H_3 }}
-          ES_SDK_H_4: ${{ secrets.ES_SDK_H_4 }}
-          ES_SDK_H_5: ${{ secrets.ES_SDK_H_5 }}
-          ES_SDK_H_6: ${{ secrets.ES_SDK_H_6 }}
-          ES_SDK_H_7: ${{ secrets.ES_SDK_H_7 }}
-          ES_SDK_H_8: ${{ secrets.ES_SDK_H_8 }}
-          ES_SDK_H_9: ${{ secrets.ES_SDK_H_9 }}
-          ES_SDK_H_10: ${{ secrets.ES_SDK_H_10 }}
-          ES_SDK_H_11: ${{ secrets.ES_SDK_H_11 }}
-          ES_SDK_H_12: ${{ secrets.ES_SDK_H_12 }}
-          ES_SDK_LIB_1: ${{ secrets.ES_SDK_LIB_1 }}
-          ES_SDK_LIB_2: ${{ secrets.ES_SDK_LIB_2 }}
-          ES_SDK_LIB_3: ${{ secrets.ES_SDK_LIB_3 }}
-          ES_SDK_LIB_4: ${{ secrets.ES_SDK_LIB_4 }}
-          ES_SDK_LIB_5: ${{ secrets.ES_SDK_LIB_5 }}
-          ES_SDK_LIB_6: ${{ secrets.ES_SDK_LIB_6 }}
-          ES_SDK_LIB_7: ${{ secrets.ES_SDK_LIB_7 }}
-          ES_SDK_LIB_8: ${{ secrets.ES_SDK_LIB_8 }}
-          ES_SDK_LIB_9: ${{ secrets.ES_SDK_LIB_9 }}
-          ES_SDK_LIB_10: ${{ secrets.ES_SDK_LIB_10 }}
-          ES_SDK_LIB_11: ${{ secrets.ES_SDK_LIB_11 }}
-          ES_SDK_LIB_12: ${{ secrets.ES_SDK_LIB_12 }}
+          # alle Secrets als ein JSON-Objekt, das Skript sucht sich die Stuecke ES_SDK_*_1.. heraus
+          ALL_SECRETS: ${{ toJSON(secrets) }}
         run: |
           function Unpack([string]$prefix, [string]$out) {
+            $all = $env:ALL_SECRETS | ConvertFrom-Json
             $b64 = ''
-            for ($i = 1; $i -le 12; $i++) { $v = [Environment]::GetEnvironmentVariable("$($prefix)_$i"); if ($v) { $b64 += $v.Trim() } }
+            for ($i = 1; $i -le 99; $i++) { $v = $all."$($prefix)_$i"; if (-not $v) { break }; $b64 += $v.Trim() }
             if (-not $b64) { throw "Secrets $($prefix)_1.. fehlen (tools/set-sdk-secrets.ps1 ausfuehren)" }
             $in = New-Object IO.MemoryStream(,[Convert]::FromBase64String($b64))
             $gz = New-Object IO.Compression.GZipStream($in, [IO.Compression.CompressionMode]::Decompress)
