@@ -258,8 +258,14 @@
 
   function geom(colEl) {
     const H = colEl.clientHeight, W = colEl.clientWidth;
-    const clockH = window.matchMedia('(max-width: 760px)').matches ? 34 : 46;
-    const y0 = H - clockH, top = 40;
+    const mobile = window.matchMedia('(max-width: 760px)').matches;
+    const clockH = mobile ? 34 : 46;
+    // Jetzt-Linie (Landung) so hoch, dass ein Label auf Hoehe der Landung noch ueber die FLOW-Kaesten passt
+    // und der Streifen bis zur Landung gerade bleibt
+    const f = colEls.N && colEls.N.flowEl;
+    const LH = mobile ? 22 : window.matchMedia('(max-width: 1200px)').matches ? 27 : 30;
+    const reserve = f ? Math.max(clockH, f.offsetHeight + 6 + LH / 2 + 6) : clockH;
+    const y0 = H - reserve, top = 40;
     const span = engine.state.timelineMin * 60;
     return { H, W, y0, top, span, y: t => y0 - (t - engine.last.now) / span * (y0 - top) };
   }
@@ -297,6 +303,7 @@
     }
     sc.svg.innerHTML = s;
     sc.clock.textContent = hhmm(now);
+    sc.clock.style.top = g.y0 + 'px'; sc.clock.style.bottom = 'auto';
     sc.clock.classList.toggle('sim', !!simApi);
   }
 

@@ -124,7 +124,8 @@ for (const D of ['26', '08']) {
   const v = run(-12, -24, 352), n = run(-16, -32, 356);
   ok(v.it.passedIaf && v.it.sta < v.o.sta, 'Heading direkt Final 9 NM vor BETOS: erkannt und vor OCN5ZP geplant (' + v.it.remainingNm.toFixed(0) + ' NM)');
   ok(v.spread < 30, 'Landezeit dabei stabil (Schwankung ' + Math.round(v.spread) + ' s ueber 2 min)');
-  ok(!n.it.passedIaf && n.it.remainingNm > 60, 'normal Richtung BETOS: weiter ueber die Transition (' + n.it.remainingNm.toFixed(0) + ' NM)');
+  // nach 2 min Flug noch rund 7 NM bis BETOS plus Transition (AIP-skaliert gut 50 NM)
+  ok(!n.it.passedIaf && n.it.remainingNm > 55, 'normal Richtung BETOS: weiter ueber die Transition (' + n.it.remainingNm.toFixed(0) + ' NM)');
 }
 
 console.log(fails ? fails + ' Fehler' : 'alles gruen');
