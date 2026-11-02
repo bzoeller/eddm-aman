@@ -114,7 +114,7 @@ function serve() {
   const counts = {};
   for (const v of ['BETOS-FUE', 'BETOS-STA', 'BETOS']) {
     await p.click('#btnMenu'); await p.selectOption('#selView', v); await p.click('#btnClose');
-    await p.waitForTimeout(300);
+    await p.waitForFunction(two => { const l = [...document.querySelectorAll('.col.C .label .cs')]; return l.length && (!two || new Set(l.map(x => getComputedStyle(x).color)).size === 2); }, v === 'BETOS', { timeout: 60000 }).catch(() => null);
     counts[v] = (await p.$$('.col.C .label')).length;
     if (v === 'BETOS') {
       // DISUN T103: weisse Schrift, SOTOV T101: gelbe Schrift in gelber Box
@@ -127,7 +127,8 @@ function serve() {
   ok(counts['BETOS-FUE'] > 0 && counts['BETOS-STA'] > 0 && counts.BETOS >= Math.max(counts['BETOS-FUE'], counts['BETOS-STA']), 'Labels FUE ' + counts['BETOS-FUE'] + ', STA ' + counts['BETOS-STA'] + ', combined ' + counts.BETOS);
   // Wien LOVV_B: NAPSA mit AMADI Q113 (weiss) und REDBU Q112 (rot)
   await p.click('#btnMenu'); await p.selectOption('#selView', 'NAPSA'); await p.click('#btnClose');
-  await p.waitForTimeout(300);
+  // der Zufallsverkehr braucht evtl. ein paar Takte, bis beide Stroeme in der Ansicht sind
+  await p.waitForFunction(() => new Set([...document.querySelectorAll('.col.C .label .cs')].map(x => getComputedStyle(x).color)).size === 2, null, { timeout: 60000 }).catch(() => null);
   const napsa = await p.$$eval('.col.C .label .cs', l => [...new Set(l.map(x => getComputedStyle(x).color))]);
   ok(napsa.length === 2, 'LOVV_B zeigt AMADI und REDBU (zwei Schriftfarben): ' + napsa.join(' / '));
 

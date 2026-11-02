@@ -7,6 +7,13 @@ let fails = 0;
 const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m); };
 const cmd = t => fs.appendFileSync(dataFile + '.cmd', t + '\n');
 const wait = ms => new Promise(r => setTimeout(r, ms));
+// warten, bis eine Bedingung gilt (Daten laufen Feed -> Plugin -> Seite, jeweils im 1-5-s-Takt; CI-Rechner sind langsam)
+const until = async (fn, ms = 25000) => {
+  for (const t0 = Date.now(); Date.now() - t0 < ms; await wait(500)) { try { if (await fn()) return true; } catch (e) { /* weiter warten */ } }
+  return false;
+};
+const txt = sel => p.textContent(sel);
+let p;
 (async () => {
   const api = await (await fetch('http://127.0.0.1:8471/api/traffic')).json();
   ok(api.version === 1 && api.aircraft.length > 20 && api.me.callsign === 'EDDM_N_APP', '/api/traffic liefert ' + api.aircraft.length + ' Flieger, ich bin ' + api.me.callsign);
@@ -20,10 +27,10 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok(codes.every(c => c === '403' || c === '404'), 'kein Zugriff ausserhalb des Web-Ordners (' + codes.join(', ') + ')');
 
   const b = await chromium.launch();
-  const p = await b.newPage({ viewport: { width: 960, height: 1080 } });
+  p = await b.newPage({ viewport: { width: 960, height: 1080 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto('http://127.0.0.1:8471/');
-  await wait(6500);
+  await until(async () => /View APP/.test(await p.evaluate(() => document.getElementById('status').innerText)) && (await p.$$('.col.S .label')).length > 3);
   const st = await p.evaluate(() => document.getElementById('status').innerText);
   ok(/EDDM_N_APP/.test(st) && /View APP/.test(st), 'Plugin-Modus, Rolle aus dem Callsign: ' + st.replace(/\n/g, ' | '));
   const nN = await p.$$eval('.col.N .label', l => l.length), nS = await p.$$eval('.col.S .label', l => l.length);
@@ -34,13 +41,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
   // EuroScope dreht die Bahn: AMAN bleibt, Warnung am Rand
   cmd('ESRWY 08L 08R');
-  await wait(7000);
+  await until(async () => /EuroScope 08/.test(await txt('#dirWarn')));
   ok((await p.textContent('#rwyVal')) === '26' && /EuroScope 08, AMAN 26/.test(await p.textContent('#dirWarn')), 'EuroScope 08: AMAN bleibt 26, Warnung: ' + (await p.textContent('#dirWarn')));
   // Neu laden, waehrend EuroScope auf 08 steht: AMAN uebernimmt einmalig 08, danach dreht er nicht mehr mit
-  await p.reload(); await wait(6500);
+  await p.reload(); await until(async () => (await txt('#rwyVal')) === '08');
   ok((await p.textContent('#rwyVal')) === '08' && !(await p.isVisible('#dirWarn')), 'beim Laden einmalig 08 aus EuroScope uebernommen');
   cmd('ESRWY 26L 26R');
-  await wait(7000);
+  await until(async () => /EuroScope 26/.test(await txt('#dirWarn')));
   ok((await p.textContent('#rwyVal')) === '08' && /EuroScope 26, AMAN 08/.test(await p.textContent('#dirWarn')), 'danach dreht EuroScope nicht mehr mit: ' + (await p.textContent('#dirWarn')));
   // zurueck auf 26 fuer die folgenden Tests (wie ein Lotse im AMAN)
   await p.click('#btnRwy'); await p.click('#chDir button[data-dir="26"]'); await p.check('input[name=chWhen][value=now]');
@@ -50,27 +57,28 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   // Ansicht nach Login: CTR-Login bekommt nach dem Neuladen automatisch seine Ansicht, auch nach Hand-Auswahl
   await p.click('#btnMenu'); await p.selectOption('#selView', 'TWR'); await p.click('#btnClose');
   cmd('ME EDMM_STA_CTR');
-  await p.reload(); await wait(6500);
+  await wait(1500);   // die naechste Datei des Feeds traegt den neuen Login
+  await p.reload(); await until(async () => /CTR STA/.test(await txt('#frameTitle')) && /SOTOV/.test(await txt('#frameTitle')));
   // FUE und ZUG sind nicht eingeloggt: STA arbeitet laut OWNER-Liste auch FUE, also DISUN und SOTOV
   ok(/CTR STA/.test(await p.textContent('#frameTitle')) && /DISUN/.test(await p.textContent('#frameTitle')) && /SOTOV/.test(await p.textContent('#frameTitle')), 'EDMM_STA_CTR ohne FUE/ZUG online: ' + (await p.textContent('#frameTitle')));
   // nur ALB online (RDG und EGG nicht): ALB bekommt laut OWNER-Liste die LANDU-Stroeme, ohne dass schon etwas getrackt ist
   cmd('CTRL EDMM_ALB_CTR EDDM_N_APP'); cmd('ME EDMM_ALB_CTR');
-  await wait(7000);
+  await until(async () => /CTR ALB/.test(await txt('#frameTitle')) && /LULAR/.test(await txt('#frameTitle')));
   ok(/CTR ALB/.test(await p.textContent('#frameTitle')) && /LULAR/.test(await p.textContent('#frameTitle')) && !/SOTOV|DISUN/.test(await p.textContent('#frameTitle')), 'nur ALB online: ' + (await p.textContent('#frameTitle')));
   // EGG kommt dazu: RDG-Strom geht an EGG, ALB hat keinen Zubringer mehr
   cmd('CTRL EDMM_ALB_CTR EDMM_EGG_CTR EDDM_N_APP');
-  await wait(7000);
+  await until(async () => /no AMAN stream/.test(await txt('#frameTitle')));
   ok(/CTR ALB \(no AMAN stream\)/.test(await p.textContent('#frameTitle')) && (await p.textContent('.col.C .empty')) === 'no arrivals', 'EGG online: LANDU-Stroeme nicht mehr bei ALB (' + (await p.textContent('#frameTitle')) + ')');
   cmd('CTRL EDDM_N_APP EDMM_STA_CTR');
   // ALB arbeitet RDG mit: ALB trackt die LANDU-Fluege -> ALB bekommt automatisch die LANDU-Stroeme
   cmd('TRACK LANDU EDMM_ALB_CTR'); cmd('ME EDMM_ALB_CTR');
-  await wait(7000);
+  await until(async () => /LULAR|NIRGO|VESUB/.test(await txt('#frameTitle')) && (await p.$$('.col.C .label')).length > 0);
   const t1 = await p.textContent('#frameTitle'), cols = await p.$$eval('.col.C .label', l => l.length);
   ok(/CTR ALB/.test(t1) && /LULAR|NIRGO|VESUB/.test(t1) && cols > 0, 'ALB trackt LANDU-Verkehr: Ansicht ' + t1 + ', ' + cols + ' Labels');
   const lab = await p.$$eval('.col.C .label', l => l.map(x => x.getAttribute('aria-label')));
   ok(lab.every(x => / via (LULAR|NIRGO|VESUB)/.test(x)), 'nur LANDU-Stroeme in der Ansicht');
   cmd('ME EDDM_N_APP');
-  await wait(6500);
+  await until(async () => /AMAN EDDM APP/.test(await txt('#frameTitle')));
   ok(/AMAN EDDM APP/.test(await p.textContent('#frameTitle')), 'Login wechselt zu EDDM_N_APP: Ansicht folgt ' + (await p.textContent('#frameTitle')));
 
   // Lotse aendert die Bahn eines Sued-Fliegers auf 26R (gleiche Richtung) -> springt auf Nord
@@ -78,7 +86,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const s2 = (await p.$$eval('.col.S .label', l => l.map(x => x.dataset.cs)))[4];
   cmd('RWY ' + s1 + ' 26R');
   cmd('RWY ' + s2 + ' 08L');
-  await wait(7500);
+  await until(async () => (await p.$$eval('.col.N .label', l => l.map(x => x.dataset.cs))).includes(s1));
+  await wait(6000);   // s2 darf auch nach einem weiteren Takt nicht springen
   const inN = await p.$$eval('.col.N .label', l => l.map(x => x.dataset.cs));
   const inS = await p.$$eval('.col.S .label', l => l.map(x => x.dataset.cs));
   ok(inN.includes(s1), s1 + ': Lotse setzt 26L -> 26R, Flieger springt auf Nord');
@@ -87,7 +96,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
   // Plugin faellt aus -> DATA STALE
   process.kill(+harnessPid, 'SIGTERM');
-  await wait(17000);
+  await until(() => p.isVisible('#stale'), 40000);
   ok(await p.isVisible('#stale') && /DATA STALE/.test(await p.textContent('#stale')), 'Plugin weg: ' + (await p.textContent('#stale')));
   const geo = await p.evaluate(() => { const r = document.getElementById('scope').getBoundingClientRect(); return { w: r.width, h: r.height }; });
   ok(geo.w > 500 && geo.h > 800, 'Schirm bleibt bei DATA STALE in voller Groesse (' + Math.round(geo.w) + 'x' + Math.round(geo.h) + ')');
