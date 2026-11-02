@@ -8,7 +8,7 @@
 
   let cfg, engine, simApi = null;
   let settings = {
-    source: isPluginHost ? 'plugin' : 'sim', view: 'auto', theme: 'system',
+    source: isPluginHost ? 'plugin' : 'sim', view: 'auto', theme: 'dark',
     simRate: 60, simSpeed: 5, simWind: '250/10'
   };
   let traffic = { aircraft: [] }, me = null, metar = null, aloft = null, lastData = 0, connErr = null;
@@ -46,7 +46,8 @@
   });
 
   function applyTheme() {
-    document.documentElement.setAttribute('data-theme', 'dark');
+    const r = document.documentElement;
+    if (settings.theme === 'system') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', settings.theme || 'dark');
   }
 
   // ---------- Datenquellen ----------
@@ -267,7 +268,6 @@
     const mid = window.matchMedia('(max-width: 1200px)').matches;
     const LH = mobile ? 22 : mid ? 27 : 30, GAP = 3, LEAD = mobile ? 14 : 34;
     const labelW = Math.max(90, Math.min(mobile ? 170 : mid ? 280 : 340, g.W - LEAD - 6));
-    const showStream = view && view.streams && view.streams.length > 1;
     const pointsRight = c.side === 'N' || c.side === 'C';
     const now = engine.last.now;
     const keep = {};
@@ -326,12 +326,14 @@
       }
       const st = engine.state.staticMode ? '<span class="st" style="' + (pointsRight ? 'left' : 'right') + ':4px"></span>' : '';
       const man = it.locked ? '<span class="man" title="manuell platziert"></span>' : '';
-      const sub = showStream && it.stream ? '<span class="sub">' + ((cfg.iafs[it.iaf].streams[it.stream] || {}).sector || it.stream) + '</span>' : '';
-      const sig = [labelW, LH, pointsRight, it.iaf, it.cs, wtc, sub, mode === 'ctr' ? it.ctrStrokes : Math.round(it.remainingNm), st, man].join('|');
+      // Schriftfarbe nach Strom: z. B. SOTOV T101 und REDBU Q112 in der Farbe der Box, sonst weiss
+      const sdef = it.stream && cfg.iafs[it.iaf].streams ? cfg.iafs[it.iaf].streams[it.stream] : null;
+      const txt = sdef && sdef.text === 'box' ? ' style="color:' + color + '"' : '';
+      const sig = [labelW, LH, pointsRight, it.iaf, it.cs, wtc, txt, mode === 'ctr' ? it.ctrStrokes : Math.round(it.remainingNm), st, man].join('|');
       if (el.dataset.sig !== sig) {
         el.dataset.sig = sig;
-        el.innerHTML = labelSvg(labelW, LH, pointsRight, color) + st + man + '<span class="cs">' + it.cs + '</span><span class="wtc">' + wtc + '</span>' + sub + right;
-        el.setAttribute('aria-label', it.cs + (wtc ? ' ' + wtc : '') + ', ' + hhmm(it._t) + (mode === 'ctr' ? ', ' + (it.ctrStrokes || 0) + ' Minuten verlieren' : ', ' + Math.round(it.remainingNm) + ' NM'));
+        el.innerHTML = labelSvg(labelW, LH, pointsRight, color) + st + man + '<span class="cs"' + txt + '>' + it.cs + '</span><span class="wtc"' + txt + '>' + wtc + '</span>' + right;
+        el.setAttribute('aria-label', it.cs + (wtc ? ' ' + wtc : '') + (it.stream ? ' via ' + it.stream : '') + ', ' + hhmm(it._t) + (mode === 'ctr' ? ', ' + (it.ctrStrokes || 0) + ' Minuten verlieren' : ', ' + Math.round(it.remainingNm) + ' NM'));
       }
     }
     for (const cs of Object.keys(c.labels)) if (!keep[cs]) { c.labels[cs].remove(); delete c.labels[cs]; }
@@ -561,6 +563,7 @@
     });
 
     $('selSource').addEventListener('change', e => { settings.source = e.target.value; save(); startSource(); syncSheet(); });
+    $('selTheme').addEventListener('change', e => { settings.theme = e.target.value; applyTheme(); save(); });
     $('selView').addEventListener('change', e => { settings.view = e.target.value; save(); tick(); });
     $('selGs').addEventListener('change', e => { engine.state.finalGsMode = e.target.value; save(); tick(); });
     $('rateN').addEventListener('change', e => { engine.state.rate.N = clampRate(e.target.value); save(); tick(); });
@@ -592,6 +595,7 @@
     $('selSource').value = settings.source;
     $('selSource').querySelector('option[value="plugin"]').disabled = !isPluginHost;
     $('selView').value = settings.view;
+    $('selTheme').value = settings.theme;
     $('selGs').value = engine.state.finalGsMode;
     $('rateN').value = engine.state.rate.N; $('rateS').value = engine.state.rate.S;
     $('simRate').value = String(settings.simRate); $('simSpeed').value = String(settings.simSpeed); $('simWind').value = settings.simWind;

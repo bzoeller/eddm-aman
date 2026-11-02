@@ -159,15 +159,26 @@
     return ttg[i] + (ttg[i + 1] - ttg[i]) * f;
   }
 
-  /** Strom nach Peilung vom IAF zum Flieger, Bereiche [from, to) in Grad. */
+  /** Strom aus der Flugplanroute: erster Strom, dessen Fix oder Airway in der Route vorkommt. */
+  function streamByRoute(streams, route) {
+    if (!route) return null;
+    const tok = String(route).toUpperCase().split(/[\s.\/]+/);
+    for (const k of Object.keys(streams)) {
+      const r = streams[k].route || [];
+      if (r.some(x => tok.indexOf(x) >= 0)) return k;
+    }
+    return null;
+  }
+
+  /** Strom nach Peilung vom IAF zum Flieger, Bereiche [from, to) in Grad. Ohne Bereiche: unbekannt. */
   function streamFor(streams, brg) {
-    const keys = Object.keys(streams);
+    const keys = Object.keys(streams).filter(k => streams[k].from != null && streams[k].to != null);
     for (const k of keys) {
       const z = streams[k];
       const inside = z.from <= z.to ? brg >= z.from && brg < z.to : brg >= z.from || brg < z.to;
       if (inside) return k;
     }
-    return keys[0];
+    return keys[0] || null;
   }
 
   // ---------- Engine ----------
@@ -308,12 +319,17 @@
         const iaf = (ac.iaf && cfg.iafs[ac.iaf]) ? ac.iaf : (a.iaf || nearestIaf(p));
         a.iaf = iaf;
         a.viaIaf = !!(ac.iaf && cfg.iafs[ac.iaf]);
-        // Einflugstrom (z. B. BETOS West ueber FUE oder Sued ueber STA): Peilung vom IAF,
-        // festgehalten sobald der Flieger naeher als 40 NM ist
+        // Einflugstrom (z. B. DISUN T103 BETOS oder SOTOV T101 BETOS): zuerst aus der Flugplanroute,
+        // sonst aus der Peilung vom IAF (festgehalten, sobald der Flieger naeher als 40 NM ist)
         const strm = cfg.iafs[iaf].streams;
         if (!strm) a.stream = null;
         else if (ac.stream && strm[ac.stream]) a.stream = ac.stream;
-        else if (!a.stream || !strm[a.stream] || dist(p, iafXY[iaf]) > 40) a.stream = streamFor(strm, trackDeg(iafXY[iaf], p));
+        else {
+          const byRoute = streamByRoute(strm, ac.route);
+          if (byRoute) a.stream = byRoute;
+          else if (!a.stream || !strm[a.stream] || (!a.streamByRoute && dist(p, iafXY[iaf]) > 40)) a.stream = streamFor(strm, trackDeg(iafXY[iaf], p));
+          if (byRoute) a.streamByRoute = true;
+        }
 
         // Bahnzuteilung: manuell > Standard nach IAF > Ausweichen bei Sperre
         let side = a.rwySide || cfg.iafs[iaf].side;
@@ -550,9 +566,11 @@
    * der Nachbarsektor nicht besetzt, gibt es die combined-Ansicht mit beiden Stroemen.
    */
   function ctrSector(cfg, callsign, online) {
+    const views = cfg.ctrViews || [];
+    const direct = views.find(v => v.callsign && new RegExp(v.callsign).test(callsign || ''));
+    if (direct) return direct.id;
     const m = /^EDMM_([A-Z0-9]+?)\d?_CTR$/.exec(callsign || '') || /^EDMM_([A-Z0-9]+)_CTR$/.exec(callsign || '');
     if (!m) return null;
-    const views = cfg.ctrViews || [];
     const own = views.find(v => v.sector === m[1]);
     if (!own) return null;
     if (Array.isArray(online)) {
@@ -566,5 +584,5 @@
     return own.id;
   }
 
-  return { createEngine, rayHit, roleFor, ctrSector, parseMetarWind, makeProjection, headwind, tasFromIas, preparePaths, pointAt };
+  return { createEngine, rayHit, streamByRoute, roleFor, ctrSector, parseMetarWind, makeProjection, headwind, tasFromIas, preparePaths, pointAt };
 });

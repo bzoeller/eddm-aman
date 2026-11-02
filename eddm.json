@@ -1,5 +1,5 @@
 {
- "_info": "Flughafendaten EDDM fuer den AMAN. aipTrackMiles = durchschnittliche Flugentfernung ab IAF laut AIP AD 2 EDDM 1-30 (01 OCT 2026); danach wird gerechnet. Die Pfadgeometrie (aus den RNAV-Transitions) dient nur dazu, den Fortschritt eines Fliegers zu verfolgen, die Strecke vor dem 15-NM-Final wird auf den AIP-Wert skaliert.",
+ "_info": "Flughafendaten EDDM fuer den AMAN. Stroeme je IAF: erkannt ueber die Flugplanroute (route), sonst ueber die Peilung vom IAF (from/to, nur wenn angegeben). text = Schriftfarbe im Label: fg = weiss (hell: schwarz), box = Farbe der Box. aipTrackMiles = durchschnittliche Flugentfernung ab IAF laut AIP AD 2 EDDM 1-30 (01 OCT 2026); danach wird gerechnet. Die Pfadgeometrie (aus den RNAV-Transitions) dient nur dazu, den Fortschritt eines Fliegers zu verfolgen, die Strecke vor dem 15-NM-Final wird auf den AIP-Wert skaliert.",
  "airac": "AIP AD 2 EDDM 1-30, 01 OCT 2026 (AMDT 10/26)",
  "icao": "EDDM",
  "elevationFt": 1487,
@@ -30,10 +30,10 @@
  "ctrViews": [
   { "id": "ROKIL", "iaf": "ROKIL", "sector": "NDG", "label": "CTR NDG (ROKIL)" },
   { "id": "LANDU", "iaf": "LANDU", "sector": "RDG", "label": "CTR RDG (LANDU)" },
-  { "id": "BETOS-FUE", "iaf": "BETOS", "sector": "FUE", "streams": ["W"], "label": "CTR FUE (BETOS West)" },
-  { "id": "BETOS-STA", "iaf": "BETOS", "sector": "STA", "streams": ["S"], "label": "CTR STA (BETOS Sued)" },
-  { "id": "BETOS", "iaf": "BETOS", "sector": "FUE+STA", "streams": ["W", "S"], "combine": ["FUE", "STA"], "label": "CTR FUE+STA combined (BETOS)" },
-  { "id": "NAPSA", "iaf": "NAPSA", "sector": "WIEN", "label": "Wien (NAPSA)" }
+  { "id": "BETOS-FUE", "iaf": "BETOS", "sector": "FUE", "streams": ["DISUN"], "label": "CTR FUE (DISUN T103 BETOS)" },
+  { "id": "BETOS-STA", "iaf": "BETOS", "sector": "STA", "streams": ["SOTOV"], "label": "CTR STA (SOTOV T101 BETOS)" },
+  { "id": "BETOS", "iaf": "BETOS", "sector": "FUE+STA", "streams": ["DISUN", "SOTOV"], "combine": ["FUE", "STA"], "label": "CTR FUE+STA combined (BETOS)" },
+  { "id": "NAPSA", "iaf": "NAPSA", "sector": "LOVV_B", "callsign": "^LOVV_B\\d?_CTR$", "label": "Wien LOVV_B (NAPSA)" }
  ],
  "iafs": {
   "ROKIL": {
@@ -57,8 +57,8 @@
    "color": "#e8d53a",
    "sector": "FUE/STA",
    "streams": {
-    "W": { "name": "West", "sector": "FUE", "from": 220, "to": 360 },
-    "S": { "name": "Sued", "sector": "STA", "from": 90, "to": 220 }
+    "DISUN": { "route": ["DISUN", "T103"], "sector": "FUE", "text": "fg", "from": 220, "to": 360 },
+    "SOTOV": { "route": ["SOTOV", "T101"], "sector": "STA", "text": "box", "from": 90, "to": 220 }
    }
   },
   "NAPSA": {
@@ -66,7 +66,11 @@
    "lon": 12.345,
    "side": "S",
    "color": "#e5413b",
-   "sector": "WIEN"
+   "sector": "LOVV_B",
+   "streams": {
+    "AMADI": { "route": ["AMADI", "Q113"], "sector": "LOVV_B", "text": "fg" },
+    "REDBU": { "route": ["REDBU", "Q112"], "sector": "LOVV_B", "text": "box" }
+   }
   }
  },
  "paths": {
@@ -1239,7 +1243,7 @@
  "roles": {
   "APP": "^EDDM_.*APP$",
   "TWR": "^EDDM_(.*_)?TWR$",
-  "CTR": "^EDMM_.*CTR$"
+  "CTR": "^(EDMM_.*|LOVV_B\\d?)_CTR$"
  },
  "wind": {
   "lat": 48.354,

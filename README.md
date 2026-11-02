@@ -15,20 +15,31 @@ Danach im Browser `http://localhost:8090/` öffnen. Ohne EuroScope läuft automa
 ## Datenquellen
 
 - **Simulation:** erzeugt Anflugverkehr über die vier IAFs, einstellbar im MENU (Rate, Tempo, Bodenwind).
-- **EuroScope-Plugin:** Wird die Seite vom Plugin unter `http://127.0.0.1:8471/` ausgeliefert, holt sie den Verkehr alle 5 Sekunden von `/api/traffic`. Die Rolle (APP, TWR, CTR) folgt aus dem eigenen Callsign. Optional kann das Plugin pro Flieger `trk` (Kurs über Grund) und `stream` (`W` oder `S` bei BETOS) sowie eine Liste `controllers` der eingeloggten Callsigns mitschicken.
+- **EuroScope-Plugin:** Wird die Seite vom Plugin unter `http://127.0.0.1:8471/` ausgeliefert, holt sie den Verkehr alle 5 Sekunden von `/api/traffic`. Die Rolle (APP, TWR, CTR) folgt aus dem eigenen Callsign. Optional kann das Plugin pro Flieger `route` (Flugplanroute), `trk` (Kurs über Grund) und `stream` (`DISUN`, `SOTOV`, `AMADI`, `REDBU`) sowie eine Liste `controllers` der eingeloggten Callsigns mitschicken.
 
-## CTR-Ansichten
+## CTR-Ansichten und Ströme
 
 | Ansicht | Callsign | zeigt |
 |---|---|---|
 | CTR NDG (ROKIL) | `EDMM_NDG_CTR` | Anflüge über ROKIL |
 | CTR RDG (LANDU) | `EDMM_RDG_CTR` | Anflüge über LANDU |
-| CTR FUE (BETOS West) | `EDMM_FUE_CTR` | BETOS-Anflüge aus dem Westen |
-| CTR STA (BETOS Süd) | `EDMM_STA_CTR` | BETOS-Anflüge aus dem Süden |
-| CTR FUE+STA combined | FUE oder STA, wenn der andere Sektor nicht besetzt ist | beide BETOS-Ströme, im Label mit FUE oder STA markiert |
-| Wien (NAPSA) | – | Anflüge über NAPSA |
+| CTR FUE | `EDMM_FUE_CTR` | BETOS-Strom DISUN T103 |
+| CTR STA | `EDMM_STA_CTR` | BETOS-Strom SOTOV T101 |
+| CTR FUE+STA combined | FUE oder STA, wenn der andere Sektor nicht besetzt ist | beide BETOS-Ströme |
+| Wien LOVV_B (NAPSA) | `LOVV_B_CTR` | NAPSA-Ströme AMADI Q113 und REDBU Q112 |
 
-Den Strom bestimmt das AMAN aus der Peilung vom IAF BETOS zum Flieger (West 220° bis 360°, Süd 90° bis 220°, einstellbar unter `iafs.BETOS.streams`). Ab 40 NM vor BETOS bleibt der Strom fest. Combined wird automatisch gewählt, wenn das Plugin `controllers` liefert. Sonst kann man die Ansicht im Menü (EXIT) fest einstellen.
+Label-Farben (Box = IAF, Schrift = Strom):
+
+| Strom | Box | Schrift |
+|---|---|---|
+| DISUN T103 BETOS | gelb | weiß |
+| SOTOV T101 BETOS | gelb | gelb |
+| AMADI Q113 NAPSA | rot | weiß |
+| REDBU Q112 NAPSA | rot | rot |
+
+Den Strom erkennt das AMAN aus der Flugplanroute (Feld `route`, z. B. `... DISUN T103 BETOS`). Fehlt die Route, schätzt es den Strom bei BETOS aus der Peilung vom IAF (DISUN 220° bis 360°, SOTOV 90° bis 220°, einstellbar in `eddm.json` unter `iafs.BETOS.streams`). Bei NAPSA gibt es keine Schätzung: Ohne Route bleibt die Schrift weiß. Combined wird automatisch gewählt, wenn das Plugin `controllers` liefert. Sonst stellt man die Ansicht im Menü (EXIT) fest ein.
+
+In der hellen Version (EXIT → Darstellung) wird weiße Schrift schwarz, Gelb und Weiß werden für den Kontrast abgedunkelt.
 
 ## Bedienung (als APP)
 
@@ -39,7 +50,7 @@ Den Strom bestimmt das AMAN aus der Peilung vom IAF BETOS zum Flieger (West 220�
 - Label ziehen: Reihenfolge tauschen oder auf die andere Bahn setzen. Ins Hold-Feld ziehen: aus der Sequenz nehmen. Aus dem Hold-Feld auf eine Bahn ziehen: an dieser Stelle einplanen.
 - `static` / `dynamic`: Planung vor dem IAF einfrieren oder laufen lassen.
 - FLOW: Abstand in NM pro Bahn.
-- EXIT: Einstellungen (Datenquelle, Ansicht, Staffelung, Bahnsperre, Simulation).
+- EXIT: Einstellungen (Datenquelle, Ansicht, Darstellung hell oder dunkel, Staffelung, Bahnsperre, Simulation).
 
 ## Downwind und Final
 

@@ -93,13 +93,26 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
     await p.waitForTimeout(300);
     counts[v] = (await p.$$('.col.C .label')).length;
     if (v === 'BETOS') {
-      const subs = await p.$$eval('.col.C .label .sub', l => [...new Set(l.map(x => x.textContent))]);
-      ok(subs.includes('FUE') && subs.includes('STA'), 'combined zeigt beide Stroeme: ' + subs.join(', '));
+      // DISUN T103: weisse Schrift, SOTOV T101: gelbe Schrift in gelber Box
+      const cols = await p.$$eval('.col.C .label .cs', l => [...new Set(l.map(x => getComputedStyle(x).color))]);
+      ok(cols.length === 2, 'combined zeigt beide Stroeme (zwei Schriftfarben): ' + cols.join(' / '));
       await p.screenshot({ path: out + '/ctr-combined.png' });
     }
     ok(!(await p.$('.col.C .label.editable')), v + ': nur Anzeige');
   }
   ok(counts['BETOS-FUE'] > 0 && counts['BETOS-STA'] > 0 && counts.BETOS >= Math.max(counts['BETOS-FUE'], counts['BETOS-STA']), 'Labels FUE ' + counts['BETOS-FUE'] + ', STA ' + counts['BETOS-STA'] + ', combined ' + counts.BETOS);
+  // Wien LOVV_B: NAPSA mit AMADI Q113 (weiss) und REDBU Q112 (rot)
+  await p.click('#btnMenu'); await p.selectOption('#selView', 'NAPSA'); await p.click('#btnClose');
+  await p.waitForTimeout(300);
+  const napsa = await p.$$eval('.col.C .label .cs', l => [...new Set(l.map(x => getComputedStyle(x).color))]);
+  ok(napsa.length === 2, 'LOVV_B zeigt AMADI und REDBU (zwei Schriftfarben): ' + napsa.join(' / '));
+
+  // helle Version
+  await p.click('#btnMenu'); await p.selectOption('#selView', 'APP'); await p.selectOption('#selTheme', 'light'); await p.click('#btnClose');
+  await p.waitForTimeout(300);
+  const bg = await p.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  ok(bg !== 'rgb(0, 0, 0)', 'helle Version aktiv: ' + bg);
+  await p.screenshot({ path: out + '/light.png' });
   ok(errs.length === 0, 'keine JS-Fehler ' + errs.join(' | '));
 
   // 10) Telefon

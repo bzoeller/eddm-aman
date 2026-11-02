@@ -1,6 +1,6 @@
 /* Layout nach dem echten AMAN-Schirm in EDDM: schwarzer Schirm mit grauem Rahmen, Zeitstrahl in der Mitte,
    links Nordbahn, rechts Suedbahn, daneben die Bedienleiste (EXIT, RWY, Hold-Feld, Statistik).
-   Bewusst nur dunkel, so wie am Arbeitsplatz. */
+   Dunkel ist Standard, hell als zweite Version (Einstellung "Darstellung"). */
 :root {
   --bg: #000;
   --panel: #000;
@@ -21,12 +21,35 @@
   --iaf-BETOS: #e9d63b;
   --iaf-NAPSA: #e5302a;
   --focus: #7aa2ff;
+  --bar: #2b2d2f; --bar-thumb: #8a8d90; --title-fg: #3a3c3e; --vbar: #1c1d1f; --vbar-thumb: #3a3c3e;
+  --menu-bg: #000; --disabled: #55585b; --sheet-bg: #0b0c0d;
   --font-ui: Arial, Helvetica, "Liberation Sans", sans-serif;
   --font-mono: "Lucida Console", "DejaVu Sans Mono", Consolas, "Liberation Mono", Menlo, monospace;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; } }
 :root[data-theme="dark"] { color-scheme: dark; }
+/* Helle Version: hellgrauer Schirm, schwarze Schrift, dunkle Rahmen. Gelb und Weiss werden fuer den Kontrast abgedunkelt. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg: #e4e6e8; --panel: #e4e6e8; --frame: #5b5f64; --frame-hi: #a9adb2; --frame-lo: #8b8f94;
+    --fg: #000; --muted: #4f545a; --tick: #000; --label-bg: #f6f6f6; --miles: #087a2a;
+    --static: #1f3cf5; --static-fg: #fff; --hatch: #d0521e; --now: #cc1f18;
+    --iaf-ROKIL: #6a6e73; --iaf-LANDU: #1d3de0; --iaf-BETOS: #a88a00; --iaf-NAPSA: #cc1f18; --focus: #1d3de0;
+    --bar: #c9ccd0; --bar-thumb: #7d8186; --title-fg: #222; --vbar: #d3d6d9; --vbar-thumb: #9a9ea3;
+    --menu-bg: #f2f2f2; --disabled: #a3a7ab; --sheet-bg: #eceef0;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #e4e6e8; --panel: #e4e6e8; --frame: #5b5f64; --frame-hi: #a9adb2; --frame-lo: #8b8f94;
+  --fg: #000; --muted: #4f545a; --tick: #000; --label-bg: #f6f6f6; --miles: #087a2a;
+  --static: #1f3cf5; --static-fg: #fff; --hatch: #d0521e; --now: #cc1f18;
+  --iaf-ROKIL: #6a6e73; --iaf-LANDU: #1d3de0; --iaf-BETOS: #a88a00; --iaf-NAPSA: #cc1f18; --focus: #1d3de0;
+  --bar: #c9ccd0; --bar-thumb: #7d8186; --title-fg: #222; --vbar: #d3d6d9; --vbar-thumb: #9a9ea3;
+  --menu-bg: #f2f2f2; --disabled: #a3a7ab; --sheet-bg: #eceef0;
+  color-scheme: light;
+}
 
 [hidden] { display: none !important; }
 html, body { height: 100%; }
@@ -47,10 +70,10 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
   border: 5px solid var(--frame); border-top: 12px solid var(--frame-hi);
   box-shadow: inset 0 0 0 1px var(--frame-lo); padding-right: 16px;
 }
-.frame-title { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); font: 9px var(--font-mono); color: #3a3c3e; letter-spacing: .06em; white-space: nowrap; }
+.frame-title { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); font: 9px var(--font-mono); color: var(--title-fg); letter-spacing: .06em; white-space: nowrap; }
 /* Rollbalken zwischen Schirm und Bedienleiste, wie am Original (nur Optik) */
-.scope-bar { position: absolute; top: 0; right: 0; bottom: 0; width: 14px; background: #2b2d2f; border-left: 2px solid var(--frame-lo); }
-.scope-bar i { position: absolute; left: 2px; right: 2px; top: 30%; height: 38%; background: #8a8d90; }
+.scope-bar { position: absolute; top: 0; right: 0; bottom: 0; width: 14px; background: var(--bar); border-left: 2px solid var(--frame-lo); }
+.scope-bar i { position: absolute; left: 2px; right: 2px; top: 30%; height: 38%; background: var(--bar-thumb); }
 .cols { position: relative; flex: 1; display: grid; min-height: 0; }
 .cols.app-view { grid-template-columns: minmax(0, 1fr) 84px minmax(0, 1fr); }
 .cols.ctr-view { grid-template-columns: minmax(0, 1fr) 84px; }
@@ -90,7 +113,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 .label .shape { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .label .cs { position: relative; white-space: nowrap; letter-spacing: .01em; min-width: 8.2ch; }
 .label .wtc { position: relative; min-width: 1ch; }
-.label .sub { position: relative; font-size: 13px; color: var(--muted); margin-left: 8px; }
 .label .mi { position: relative; margin-left: auto; color: var(--miles); font-size: 21px; font-variant-numeric: tabular-nums; }
 .label .st { position: absolute; top: 3px; bottom: 3px; width: 12px; background: var(--static); }
 .label .strokes { position: relative; margin-left: auto; display: flex; gap: 3px; }
@@ -111,7 +133,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 .rwy-v { justify-self: end; border: 3px solid var(--frame); padding: 4px 22px; min-width: 64px; text-align: center; font: 700 36px var(--font-ui); font-variant-numeric: tabular-nums; }
 .rwy-auto { font-size: 10px; color: var(--muted); }
 .len { display: flex; align-items: center; gap: 10px; margin-top: 12px; font: 700 15px var(--font-ui); }
-.len input { flex: 1; min-width: 0; accent-color: #9a9da0; }
+.len input { flex: 1; min-width: 0; accent-color: var(--bar-thumb); }
 
 .holdbox { position: relative; margin-top: 70px; min-height: 200px; border: 2px solid var(--frame-lo); background: var(--panel); padding: 6px 22px 6px 6px; box-sizing: border-box; }
 .holdbox.over { outline: 2px dashed var(--miles); outline-offset: -6px; }
@@ -120,8 +142,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 .hold-list li.editable { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .hold-list li.dragging { position: fixed; z-index: 50; cursor: grabbing; background: var(--label-bg); border-color: var(--miles); }
 .hold-list li:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.vscroll { position: absolute; top: 0; right: 0; bottom: 0; width: 14px; background: #1c1d1f; border-left: 1px solid var(--frame-lo); }
-.vscroll i { position: absolute; left: 2px; right: 2px; top: 2px; height: 26px; border: 1px solid var(--frame-lo); background: #3a3c3e; }
+.vscroll { position: absolute; top: 0; right: 0; bottom: 0; width: 14px; background: var(--vbar); border-left: 1px solid var(--frame-lo); }
+.vscroll i { position: absolute; left: 2px; right: 2px; top: 2px; height: 26px; border: 1px solid var(--frame-lo); background: var(--vbar-thumb); }
 .col.over { outline: 2px dashed var(--miles); outline-offset: -4px; }
 
 .btn-small { border: 2px solid var(--frame); background: var(--panel); padding: 4px 8px; font-size: 11px; font-weight: 700; letter-spacing: .06em; cursor: pointer; }
@@ -135,8 +157,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 
 /* ---------- Menue am Flieger ---------- */
 .acmenu {
-  position: fixed; z-index: 80; min-width: 170px; box-sizing: border-box; background: #000;
-  border: 3px solid var(--frame); box-shadow: inset 0 0 0 1px var(--frame-lo), 0 6px 20px rgb(0 0 0 / .6);
+  position: fixed; z-index: 80; min-width: 170px; box-sizing: border-box; background: var(--menu-bg);
+  border: 3px solid var(--frame); box-shadow: inset 0 0 0 1px var(--frame-lo), 0 6px 20px rgb(0 0 0 / .45);
   padding: 3px; display: flex; flex-direction: column;
 }
 .acmenu .mt { font: 13px var(--font-mono); color: var(--muted); padding: 3px 8px 5px; border-bottom: 1px solid var(--frame-lo); margin-bottom: 3px; }
@@ -144,12 +166,12 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
   border: 0; background: transparent; text-align: left; padding: 7px 10px; font: 700 16px var(--font-mono); letter-spacing: .03em; cursor: pointer;
 }
 .acmenu button:hover, .acmenu button:focus-visible { background: var(--static); color: var(--static-fg); outline: none; }
-.acmenu button:disabled { color: #55585b; cursor: default; background: transparent; }
+.acmenu button:disabled { color: var(--disabled); cursor: default; background: transparent; }
 
 /* ---------- Einstellungen ---------- */
 .sheet { position: fixed; inset: 0; z-index: 100; background: rgb(0 0 0 / .6); display: flex; justify-content: flex-end; }
 .sheet-inner {
-  width: min(420px, 100%); height: 100%; overflow-y: auto; box-sizing: border-box; background: #0b0c0d; border-left: 3px solid var(--frame);
+  width: min(420px, 100%); height: 100%; overflow-y: auto; box-sizing: border-box; background: var(--sheet-bg); border-left: 3px solid var(--frame);
   padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) 16px;
   display: flex; flex-direction: column; gap: 14px;
 }
@@ -184,7 +206,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
   .label .cs { min-width: 7.6ch; }
   .label .mi { font-size: 12px; }
   .label .st { width: 6px; }
-  .label .sub { font-size: 10px; margin-left: 4px; }
   .tag { font-size: 13px; padding: 1px 5px; }
   .flow { min-width: 0; padding: 2px 4px; }
   .flow input { width: 44px; font-size: 16px; }

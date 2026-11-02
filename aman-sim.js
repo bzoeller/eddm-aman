@@ -15,7 +15,12 @@
     ['B748', 'H', 2], ['A388', 'J', 1], ['C25B', 'L', 1]
   ];
   // Einflugrichtungen je IAF (Peilung vom IAF aus); BETOS hat zwei Stroeme: West (FUE) und Sued (STA)
-  const INBOUND = { ROKIL: [300], LANDU: [25], BETOS: [265, 265, 190], NAPSA: [95] };
+  // je Eintrag: Peilung vom IAF und Route (wie im Flugplan); BETOS und NAPSA haben je zwei Stroeme
+  const INBOUND = {
+    ROKIL: [[300, 'ROKIL']], LANDU: [[25, 'LANDU']],
+    BETOS: [[265, 'DISUN T103 BETOS'], [265, 'DISUN T103 BETOS'], [190, 'SOTOV T101 BETOS']],
+    NAPSA: [[80, 'AMADI Q113 NAPSA'], [110, 'REDBU Q112 NAPSA']]
+  };
   const WEIGHT = { ROKIL: 0.3, LANDU: 0.2, BETOS: 0.3, NAPSA: 0.2 };
 
   function createSim(cfg, opts) {
@@ -50,11 +55,12 @@
       const iaf = pick(Object.keys(WEIGHT).map(k => [k, WEIGHT[k]]));
       const t = TYPES[Math.floor(pickIndex(TYPES.map(x => x[2])))];
       const dirs = INBOUND[iaf];
-      const brg = (dirs[Math.floor(rnd() * dirs.length)] + (rnd() - 0.5) * 30) * Math.PI / 180;
+      const inb = dirs[Math.floor(rnd() * dirs.length)];
+      const brg = (inb[0] + (rnd() - 0.5) * 20) * Math.PI / 180;
       const d = distFromIaf != null ? distFromIaf : 150 + rnd() * 30;
       const I = proj.xy(cfg.iafs[iaf].lat, cfg.iafs[iaf].lon);
       const ac = {
-        cs: callsign(), type: t[0], wtc: t[1], iaf,
+        cs: callsign(), type: t[0], wtc: t[1], iaf, route: inb[1],
         x: I.x + Math.sin(brg) * d, y: I.y + Math.cos(brg) * d,
         alt: 0, gs: 0, phase: 'enroute', s: 0, d0: Math.max(d, 60),
         cut: rnd() < 0.35 // APP dreht diesen Flieger frueh auf das Final, wenn er kein Delay hat
@@ -182,7 +188,7 @@
         activeDir: sim.dir,
         aircraft: sim.aircraft.map(a => {
           const p = proj.ll(a.x, a.y);
-          return { cs: a.cs, type: a.type, wtc: a.wtc, lat: p.lat, lon: p.lon, alt: Math.round(a.alt), gs: Math.round(a.gs), hdg: a.hdg, iaf: a.iaf, passedIaf: a.phase === 'path' || a.phase === 'direct' };
+          return { cs: a.cs, type: a.type, wtc: a.wtc, lat: p.lat, lon: p.lon, alt: Math.round(a.alt), gs: Math.round(a.gs), hdg: a.hdg, iaf: a.iaf, route: a.route, passedIaf: a.phase === 'path' || a.phase === 'direct' };
         })
       };
     }
