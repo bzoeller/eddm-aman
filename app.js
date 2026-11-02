@@ -332,12 +332,15 @@
     grp.innerHTML = s;
   }
 
-  function labelSvg(w, h, pointsRight, color) {
+  function labelSvg(w, h, pointsRight, color, manual) {
     const tip = h * 0.55;
     const pts = pointsRight
       ? [[1, 1], [w - tip, 1], [w - 1, h / 2], [w - tip, h - 1], [1, h - 1]]
       : [[tip, 1], [w - 1, 1], [w - 1, h - 1], [tip, h - 1], [1, h / 2]];
-    return '<svg class="shape" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none"><polygon points="' + pts.map(p => p.join(',')).join(' ') + '" fill="var(--label-bg)" stroke="' + color + '" stroke-width="3"/></svg>';
+    // von Hand in der Sequenz platziert: Pfeilspitze gruen ausgefuellt
+    const tri = pointsRight ? [[w - tip, 1], [w - 1, h / 2], [w - tip, h - 1]] : [[tip, 1], [1, h / 2], [tip, h - 1]];
+    const fill = manual ? '<polygon class="mantip" points="' + tri.map(p => p.join(',')).join(' ') + '" fill="var(--miles)"/>' : '';
+    return '<svg class="shape" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none"><polygon points="' + pts.map(p => p.join(',')).join(' ') + '" fill="var(--label-bg)" stroke="' + color + '" stroke-width="3"/>' + fill + '</svg>';
   }
 
   function drawColumn(c, items, mode, view) {
@@ -411,15 +414,16 @@
         right = '<span class="mi">' + Math.round(it.remainingNm) + '</span>';
       }
       const st = engine.state.staticMode ? '<span class="st" style="' + (pointsRight ? 'left' : 'right') + ':4px"></span>' : '';
-      const man = it.locked ? '<span class="man" title="placed manually"></span>' : '';
+      const man = it.locked ? 'manual' : '';
       // Schriftfarbe nach Strom: z. B. SOTOV T101 und REDBU Q112 in der Farbe der Box, sonst weiss
       const sdef = it.stream && cfg.iafs[it.iaf].streams ? cfg.iafs[it.iaf].streams[it.stream] : null;
-      const txt = sdef && sdef.text === 'box' ? ' style="color:' + color + '"' : '';
+      const txt = sdef && sdef.text === 'box' ? ' style="color:var(--txt-' + it.iaf + ')"' : '';
       const sig = [labelW, LH, pointsRight, it.iaf, it.cs, wtc, txt, mode === 'ctr' ? it.ctrStrokes + ':' + Math.round((it.delayIaf || 0) / 60) : Math.round(it.remainingNm), st, man].join('|');
       el.classList.toggle('flash', (flash[it.cs] || 0) > Date.now());
       if (el.dataset.sig !== sig) {
         el.dataset.sig = sig;
-        el.innerHTML = labelSvg(labelW, LH, pointsRight, color) + st + man + '<span class="cs' + (txt ? ' boxtxt-' + it.iaf : '') + '"' + txt + '>' + esc(it.cs) + '</span><span class="wtc' + (txt ? ' boxtxt-' + it.iaf : '') + '"' + txt + '>' + wtc + '</span>' + right;
+        el.innerHTML = labelSvg(labelW, LH, pointsRight, color, !!man) + st + '<span class="cs"' + txt + '>' + esc(it.cs) + '</span><span class="wtc"' + txt + '>' + wtc + '</span>' + right;
+        el.title = man ? 'placed manually (RECOMPUTE releases)' : '';
         el.setAttribute('aria-label', it.cs + (wtc ? ' ' + wtc : '') + (it.stream ? ' via ' + it.stream : '') + ', ' + hhmm(it._t) + (mode === 'ctr' ? ', ' + (it.ctrStrokes || 0) + ' min to lose' : ', ' + Math.round(it.remainingNm) + ' NM'));
       }
     }

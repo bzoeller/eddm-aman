@@ -54,7 +54,7 @@ In der hellen Version (MENU → Theme) wird weiße Schrift schwarz, Gelb und Wei
   - **CHANGE RWY**: auf die andere Bahn, dort nach ETA einsortiert
   - **HOLD**: aus der Sequenz ins Hold-Feld
   - **RECOMPUTE**: Hold, manuelle Bahn und manuelle Position aufheben und neu nach ETA einplanen
-- Label ziehen: Reihenfolge tauschen oder auf die andere Bahn setzen. Ins Hold-Feld ziehen: aus der Sequenz nehmen. Aus dem Hold-Feld auf eine Bahn ziehen: an dieser Stelle einplanen.
+- Label ziehen: Reihenfolge tauschen oder auf die andere Bahn setzen. Ein von Hand platzierter Flieger bekommt eine grün ausgefüllte Pfeilspitze, RECOMPUTE gibt ihn wieder frei. Ins Hold-Feld ziehen: aus der Sequenz nehmen. Aus dem Hold-Feld auf eine Bahn ziehen: an dieser Stelle einplanen.
 - `static` / `dynamic`: Planung vor dem IAF einfrieren oder laufen lassen.
 - FLOW: Abstand in NM pro Bahn.
 - Klick auf den RWY-Kasten: Runway Change und Bahnsperre (siehe unten).

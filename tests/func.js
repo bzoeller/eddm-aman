@@ -85,6 +85,7 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
   await p.mouse.up(); await p.waitForTimeout(400);
   const pos = await p.evaluate(cs => [...document.querySelectorAll('.col.N .label')].sort((a, b) => parseFloat(b.style.top) - parseFloat(a.style.top)).findIndex(l => l.dataset.cs === cs), csTop);
   ok(pos >= 0 && pos <= 6, csTop + ' nach vorn gezogen, Position ' + pos);
+  ok(await p.$eval('.col.N .label[data-cs="' + csTop + '"]', l => !!l.querySelector('.mantip')), csTop + ': von Hand platziert, gruene Pfeilspitze');
 
   // 9) CTR-Ansichten fuer BETOS: FUE (West), STA (Sued), combined (beide)
   const counts = {};

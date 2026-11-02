@@ -20,6 +20,8 @@
   --iaf-LANDU: #3d63ff;
   --iaf-BETOS: #e9d63b;
   --iaf-NAPSA: #e5302a;
+  /* Schriftfarbe fuer Stroeme mit farbiger Schrift (SOTOV, REDBU); dunkel = Boxfarbe */
+  --txt-ROKIL: var(--iaf-ROKIL); --txt-LANDU: var(--iaf-LANDU); --txt-BETOS: var(--iaf-BETOS); --txt-NAPSA: var(--iaf-NAPSA);
   --focus: #7aa2ff;
   --bar: #2b2d2f; --bar-thumb: #8a8d90; --title-fg: #3a3c3e; --vbar: #1c1d1f; --vbar-thumb: #3a3c3e;
   --menu-bg: #000; --disabled: #55585b; --sheet-bg: #0b0c0d; --rwyc: #3fe06b; --err: #ff6a5e;
@@ -35,7 +37,7 @@
     --bg: #e4e6e8; --panel: #e4e6e8; --frame: #5b5f64; --frame-hi: #a9adb2; --frame-lo: #8b8f94;
     --fg: #000; --muted: #4f545a; --tick: #000; --label-bg: #cdd0d4; --miles: #087a2a;
     --static: #1f3cf5; --static-fg: #fff; --hatch: #d0521e; --now: #cc1f18;
-    --iaf-ROKIL: #6a6e73; --iaf-LANDU: #1d3de0; --iaf-BETOS: #e6cc00; --iaf-NAPSA: #cc1f18; --focus: #1d3de0;
+    --iaf-ROKIL: #6a6e73; --iaf-LANDU: #1d3de0; --iaf-BETOS: #e6cc00; --txt-BETOS: #9a8500; --iaf-NAPSA: #cc1f18; --focus: #1d3de0;
     --bar: #c9ccd0; --bar-thumb: #7d8186; --title-fg: #222; --vbar: #d3d6d9; --vbar-thumb: #9a9ea3;
     --menu-bg: #f2f2f2; --disabled: #a3a7ab; --sheet-bg: #eceef0; --rwyc: #087a2a; --err: #b3150e;
     color-scheme: light;
@@ -45,7 +47,7 @@
   --bg: #e4e6e8; --panel: #e4e6e8; --frame: #5b5f64; --frame-hi: #a9adb2; --frame-lo: #8b8f94;
   --fg: #000; --muted: #4f545a; --tick: #000; --label-bg: #cdd0d4; --miles: #087a2a;
   --static: #1f3cf5; --static-fg: #fff; --hatch: #d0521e; --now: #cc1f18;
-  --iaf-ROKIL: #6a6e73; --iaf-LANDU: #1d3de0; --iaf-BETOS: #e6cc00; --iaf-NAPSA: #cc1f18; --focus: #1d3de0;
+  --iaf-ROKIL: #6a6e73; --iaf-LANDU: #1d3de0; --iaf-BETOS: #e6cc00; --txt-BETOS: #9a8500; --iaf-NAPSA: #cc1f18; --focus: #1d3de0;
   --bar: #c9ccd0; --bar-thumb: #7d8186; --title-fg: #222; --vbar: #d3d6d9; --vbar-thumb: #9a9ea3;
   --menu-bg: #f2f2f2; --disabled: #a3a7ab; --sheet-bg: #eceef0; --rwyc: #087a2a; --err: #b3150e;
   color-scheme: light;
@@ -108,20 +110,16 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 /* Labels */
 .label {
   position: absolute; height: 30px; display: flex; align-items: center; gap: 0; box-sizing: border-box;
-  font: 23px var(--font-mono); color: var(--fg); cursor: pointer; user-select: none; -webkit-user-select: none; z-index: 2;
+  font: 21px var(--font-mono); color: var(--fg); cursor: pointer; user-select: none; -webkit-user-select: none; z-index: 2;
 }
 .label .shape { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .label .cs { position: relative; white-space: nowrap; letter-spacing: .01em; min-width: 8.2ch; }
 .label .wtc { position: relative; min-width: 1ch; }
-/* Schrift in Box-Farbe (z. B. SOTOV gelb): in der hellen Ansicht mit feinem dunklen Rand, damit Gelb lesbar bleibt */
-:root[data-theme="light"] .label .boxtxt-BETOS { -webkit-text-stroke: .7px #3a3300; paint-order: stroke fill; }
-@media (prefers-color-scheme: light) { :root:not([data-theme]) .label .boxtxt-BETOS { -webkit-text-stroke: .7px #3a3300; paint-order: stroke fill; } }
-.label .mi { position: relative; margin-left: auto; color: var(--miles); font-size: 21px; font-variant-numeric: tabular-nums; }
+.label .mi { position: relative; margin-left: auto; color: var(--miles); font-size: inherit; font-variant-numeric: tabular-nums; }
 .label .st { position: absolute; top: 3px; bottom: 3px; width: 12px; background: var(--static); }
 .label .strokes { position: relative; margin-left: auto; display: flex; gap: 3px; }
 .label .strokes i { display: block; width: 9px; height: 3px; background: var(--miles); }
 .label .strokes { gap: 2px; }
-.label .man { position: relative; width: 6px; height: 6px; background: var(--fg); flex: none; margin-right: 6px; }
 .label.editable { cursor: grab; }
 .label.dragging { cursor: grabbing; z-index: 50; opacity: .9; }
 
@@ -243,7 +241,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 /* Mittlere Breite: Labels etwas kleiner */
 @media (max-width: 1200px) {
   .label { font-size: 19px; height: 27px; }
-  .label .mi { font-size: 17px; }
   .tag { font-size: 18px; }
   .flow { min-width: 150px; }
   .flow input { width: 70px; font-size: 22px; }
@@ -258,7 +255,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
   .cols.ctr-view { grid-template-columns: minmax(0, 1fr) 46px; }
   .label { font-size: 13px; height: 22px; }
   .label .cs { min-width: 7.6ch; }
-  .label .mi { font-size: 12px; }
   .label .st { width: 6px; }
   .tag { font-size: 13px; padding: 1px 5px; }
   .flow { min-width: 0; padding: 2px 4px; }
