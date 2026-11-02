@@ -124,21 +124,21 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
   const fmt = m => String(Math.floor((m + 1440) % 1440 / 60)).padStart(2, '0') + ':' + String((m + 1440) % 60).padStart(2, '0');
   // Vergangenheit wird abgelehnt
   await p.fill('#chTime', fmt(hm(simNow) - 5)); await p.click('#btnChSet'); await p.waitForTimeout(100);
-  ok(/Vergangenheit/.test(await p.textContent('#rwyErr')), 'Zeit in der Vergangenheit abgelehnt: ' + (await p.textContent('#rwyErr')));
+  ok(/in the past/.test(await p.textContent('#rwyErr')), 'Zeit in der Vergangenheit abgelehnt: ' + (await p.textContent('#rwyErr')));
   // Wechsel auf 08 in 3 Minuten (Simzeit)
   const atStr = fmt(hm(simNow) + 3);
   await p.click('#chDir button[data-dir="08"]');
   await p.fill('#chTime', atStr); await p.click('#btnChSet'); await p.waitForTimeout(100);
-  ok(/08 um/.test(await p.textContent('#rwyInfo')) && (await p.textContent('#btnChSet')) === 'BESTAETIGEN', 'Runway Change erst nach Bestaetigung: ' + (await p.textContent('#rwyInfo')));
+  ok(/08 at/.test(await p.textContent('#rwyInfo')) && (await p.textContent('#btnChSet')) === 'CONFIRM', 'Runway Change erst nach Bestaetigung: ' + (await p.textContent('#rwyInfo')));
   await p.click('#btnChSet'); await p.waitForTimeout(200);
-  ok((await p.textContent('#chPlanned')).includes('08 um ' + atStr), 'geplant angezeigt: ' + (await p.textContent('#chPlanned')));
+  ok((await p.textContent('#chPlanned')).includes('08 at ' + atStr), 'geplant angezeigt: ' + (await p.textContent('#chPlanned')));
   // Bahnsperre Sued von +20 bis +35 min
   await p.selectOption('#clSide', 'S');
   await p.fill('#clFrom', fmt(hm(simNow) + 20)); await p.fill('#clTo', fmt(hm(simNow) + 35));
   await p.click('#btnAddClosure'); await p.waitForTimeout(100);
-  ok(/Anfluege betroffen/.test(await p.textContent('#rwyInfo')), 'Sperre zeigt vor dem Setzen, was passiert: ' + (await p.textContent('#rwyInfo')));
+  ok(/arrivals affected/.test(await p.textContent('#rwyInfo')), 'Sperre zeigt vor dem Setzen, was passiert: ' + (await p.textContent('#rwyInfo')));
   await p.click('#btnAddClosure'); await p.waitForTimeout(200);
-  ok((await p.textContent('#clList')).includes(fmt(hm(simNow) + 20) + ' bis ' + fmt(hm(simNow) + 35)), 'Sperre mit Uhrzeit: ' + (await p.textContent('#clList')));
+  ok((await p.textContent('#clList')).includes('South  ' + fmt(hm(simNow) + 20) + '-' + fmt(hm(simNow) + 35)), 'Sperre mit Uhrzeit: ' + (await p.textContent('#clList')));
   await p.keyboard.press('Escape'); await p.waitForTimeout(150);
   ok(!(await p.isVisible('#rwyDlg')), 'Escape schliesst den Dialog');
   ok(!!(await p.$('.scale line.rwyc')) && /RWY 08/.test(await p.$eval('.scale svg', x => x.textContent)), 'gruen gestrichelte Linie mit RWY 08 am Zeitstrahl');
@@ -150,6 +150,7 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
   let switched = false;
   for (let i = 0; i < 12 && !switched; i++) { await p.waitForTimeout(3000); switched = (await p.textContent('#rwyVal')) === '08'; }
   ok(switched, 'Richtung wechselt zum Zeitpunkt automatisch auf 08');
+  ok(await p.$eval('#rwyVal', x => x.classList.contains('blink')), 'neue Richtung blinkt im RWY-Kasten');
   ok(!(await p.$('.scale line.rwyc')) && (await p.textContent('#rwyNext')) === '', 'Linie nach dem Wechsel weg');
   ok(!(await p.isVisible('#dirWarn')), 'Simulation: keine Warnung, Richtungen stimmen');
   ok(errs.length === 0, 'keine JS-Fehler ' + errs.join(' | '));

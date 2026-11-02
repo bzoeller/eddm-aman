@@ -453,9 +453,13 @@
           const mv = dist(a.prevP, p);
           if (mv > 0.15) { a.trk = trackDeg(a.prevP, p); a.prevP = p; }
         } else a.prevP = p;
-        const iaf = (ac.iaf && cfg.iafs[ac.iaf]) ? ac.iaf : (a.iaf || nearestIaf(p));
+        // IAF: vom Plugin, sonst aus dem STAR-Namen (z. B. BETOS1A) oder der Route, sonst der naechste
+        let iafIn = ac.iaf && cfg.iafs[ac.iaf] ? ac.iaf : null;
+        if (!iafIn && typeof ac.star === 'string') iafIn = Object.keys(cfg.iafs).find(k => ac.star.toUpperCase().indexOf(k) === 0) || null;
+        if (!iafIn && typeof ac.route === 'string') { const tk = ac.route.toUpperCase().split(/[\s.\/]+/); iafIn = Object.keys(cfg.iafs).find(k => tk.indexOf(k) >= 0) || null; }
+        const iaf = iafIn || a.iaf || nearestIaf(p);
         a.iaf = iaf;
-        a.viaIaf = !!(ac.iaf && cfg.iafs[ac.iaf]);
+        a.viaIaf = !!iafIn;
         // Einflugstrom (z. B. DISUN T103 BETOS oder SOTOV T101 BETOS): zuerst aus der Flugplanroute,
         // sonst aus der Peilung vom IAF (festgehalten, sobald der Flieger naeher als 40 NM ist)
         const strm = cfg.iafs[iaf].streams;

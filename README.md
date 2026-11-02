@@ -12,10 +12,12 @@ python3 -m http.server 8090
 
 Danach im Browser `http://localhost:8090/` öffnen. Ohne EuroScope läuft automatisch der Simulationsmodus.
 
+Die Oberfläche ist englisch, diese Anleitung deutsch.
+
 ## Datenquellen
 
 - **Simulation:** erzeugt Anflugverkehr über die vier IAFs, einstellbar im MENU (Rate, Tempo, Bodenwind).
-- **EuroScope-Plugin:** Wird die Seite vom Plugin unter `http://127.0.0.1:8471/` ausgeliefert, holt sie den Verkehr alle 5 Sekunden von `/api/traffic`. Die Rolle (APP, TWR, CTR) folgt aus dem eigenen Callsign. Optional kann das Plugin pro Flieger `arrRwy` (Landebahn aus Flugplan bzw. Tag), `route` (Flugplanroute), `trk` (Kurs über Grund) und `stream` (`DISUN`, `SOTOV`, `AMADI`, `REDBU`) sowie eine Liste `controllers` der eingeloggten Callsigns mitschicken.
+- **EuroScope-Plugin** (Bauen und Installieren: siehe [plugin/README.md](plugin/README.md)): Wird die Seite vom Plugin unter `http://127.0.0.1:8471/` ausgeliefert, holt sie den Verkehr alle 5 Sekunden von `/api/traffic`. Die Rolle (APP, TWR, CTR) folgt aus dem eigenen Callsign. Optional kann das Plugin pro Flieger `arrRwy` (Landebahn aus Flugplan bzw. Tag), `route` (Flugplanroute), `trk` (Kurs über Grund) und `stream` (`DISUN`, `SOTOV`, `AMADI`, `REDBU`) sowie eine Liste `controllers` der eingeloggten Callsigns mitschicken.
 
 ## CTR-Ansichten und Ströme
 
@@ -42,7 +44,7 @@ Label-Farben (Box = IAF, Schrift = Strom):
 
 Den Strom erkennt das AMAN aus der Flugplanroute (Feld `route`, z. B. `... DISUN T103 BETOS`). Fehlt die Route, nimmt es den Einflugpunkt, dessen Peilung vom IAF am besten zur Position passt (Koordinaten unter `fix`): BETOS mit DISUN 218° und SOTOV 185°, NAPSA mit AMADI 098° und REDBU 121°, LANDU mit LULAR 023°, VESUB 030° und NIRGO 038°. Bei LANDU liegen die Punkte nah beieinander, dort ist die Route deutlich zuverlässiger. Combined wird automatisch gewählt, wenn das Plugin `controllers` liefert. Sonst stellt man die Ansicht im MENU fest ein.
 
-In der hellen Version (MENU → Darstellung) wird weiße Schrift schwarz, Gelb und Weiß werden für den Kontrast abgedunkelt.
+In der hellen Version (MENU → Theme) wird weiße Schrift schwarz, Gelb und Weiß werden für den Kontrast abgedunkelt.
 
 ## Bedienung (als APP)
 
@@ -61,13 +63,13 @@ In der hellen Version (MENU → Darstellung) wird weiße Schrift schwarz, Gelb u
 
 Beides stellt APP über einen Klick auf den RWY-Kasten ein. Alle Zeiten sind UTC und werden als `HH:MM` oder vierstellig (`1420`) eingegeben.
 
-- **Runway Change:** neue Richtung (26 oder 08) wählen, dann „ab jetzt“ oder „um HH:MM“.
+- **Runway Change:** neue Richtung (26 oder 08) wählen, dann „now“ oder „at HH:MM“, dann SET RWY CHANGE und CONFIRM.
   - Ein geplanter Wechsel steht als **grün gestrichelte Linie** am Zeitstrahl, darüber klein die neue Richtung (z. B. `RWY 08`). Im RWY-Kasten steht er zusätzlich als `→08 14:20`.
   - Wer nach dem Zeitpunkt landet, wird schon jetzt auf die neue Richtung geplant: Pfad, Restweg und Zeiten gelten für die neue Bahn. Erst landen alle Anflüge der alten Richtung (auf beiden Bahnen). Der erste Flieger der neuen Richtung ist erst bei 15 NM, wenn die letzte Landung der alten Richtung erfolgt ist, plus `rwyChangeBufferSec` (30 s) Puffer. Vor dem Zeitpunkt landet niemand in der neuen Richtung.
   - Flieger, die schon hinter dem IAF sind, behalten ihre Richtung.
-  - Zum Zeitpunkt wechselt das AMAN automatisch die Richtung, und die Linie verschwindet. „LOESCHEN“ nimmt einen geplanten Wechsel zurück.
+  - Zum Zeitpunkt wechselt das AMAN automatisch die Richtung, und die Linie verschwindet. „DELETE“ nimmt einen geplanten Wechsel zurück. Beim Wechsel blinkt die neue Richtung im RWY-Kasten 10 Sekunden lang.
   - Die Betriebsrichtung kommt nur aus dem AMAN. Eine gedrehte Bahn in EuroScope ändert am AMAN nichts. Weicht sie ab, steht am Rand rot `RWY MISMATCH: EuroScope 08, AMAN 26`.
-- **Bahnsperre:** Bahn (Nord, Süd oder beide), Beginn „ab jetzt“ oder „um HH:MM“, Ende „um HH:MM“. Gesperrte Zeiten sind orange schraffiert, Anflüge weichen auf die andere Bahn aus oder werden hinter die Sperre geplant. Aufheben geht in der Liste im Dialog oder per „SPERRE AUFHEBEN“ am Schirm.
+- **Bahnsperre:** North, South oder Both, Beginn „now“ oder „at HH:MM“, Ende „Until HH:MM“. Gesperrte Zeiten sind orange schraffiert, Anflüge weichen auf die andere Bahn aus oder werden hinter die Sperre geplant. Aufheben geht in der Liste im Dialog (LIFT) oder per „LIFT CLOSURE“ am Schirm.
 
 ## Bahn aus EuroScope und Wechsel auf den anderen Downwind
 
@@ -85,11 +87,11 @@ APP-Holdings (in `eddm.json` unter `holdings`): ROKIL 126 R, LANDU 213 L, NAPSA 
 ## Schutz vor Fehlbedienung und Datenfehlern
 
 - Ziehen beginnt erst ab 12 px Bewegung, beim Ziehen zeigt eine gestrichelte Linie die Einfügestelle. Ein verschobener Flieger ist danach 5 s markiert.
-- Bahnsperre und Runway Change zeigen vor dem Setzen, was passiert (z. B. „Nord 26R gesperrt 11:20 bis 11:50. 9 Anflüge betroffen“), und brauchen einen zweiten Klick (BESTAETIGEN). Auch Aufheben braucht einen zweiten Klick.
+- Bahnsperre und Runway Change zeigen vor dem Setzen, was passiert (z. B. „North closed 11:20-11:50. 9 arrivals affected.“), und brauchen einen zweiten Klick (CONFIRM). Auch Aufheben (LIFT) braucht einen zweiten Klick.
 - Daten vom Plugin werden geprüft: kaputte Datensätze werden verworfen, Callsigns und Texte werden nie als HTML eingesetzt. Abfrage mit 4 s Timeout, eine ältere Antwort überschreibt nie eine neuere. Kommen länger als 15 s keine Daten, steht groß „DATA STALE“ am Schirm und die Labels werden ausgegraut.
 - Durchstart: Ein schon als gelandet gezählter Flieger, der wieder steigt, wird neu eingeplant und nicht mehr als Landung gezählt. Ein einzelner leerer Datentakt kurz vor der Schwelle löscht keinen Flieger mehr.
 - Gespeicherte Einstellungen aus älteren Versionen werden geprüft, ungültige Werte durch Standardwerte ersetzt.
-- In der CTR-Ansicht gibt es je Minute Delay einen Balken, bis 10 min (`ctrMaxDelayMin`). Ein rotes „+“ zeigt, dass mehr als 10 min nötig sind. Eine leere CTR-Ansicht zeigt „keine Anfluege“.
+- In der CTR-Ansicht gibt es je Minute Delay einen Balken, bis 10 min (`ctrMaxDelayMin`). Ein rotes „+“ zeigt, dass mehr als 10 min nötig sind. Eine leere CTR-Ansicht zeigt „no arrivals“.
 - In der Simulation steht „SIM“ an der Uhr.
 
 ## Downwind und Final
@@ -107,6 +109,8 @@ Hinter dem IAF steht der Streifen auf der aktuellen Vorhersage. Werden Zeit und 
 | `eddm.json` | Flughafendaten: Bahnen, IAFs, Pfade, Speedprofil, Wirbelschleppen |
 | `style.css` | Darstellung, dunkel und hell |
 | `tests/func.js` | Browsertest mit Playwright |
+| `plugin/` | EuroScope-Plugin (C++): liest den Verkehr aus EuroScope, liefert AMAN-Seite und `/api/traffic` |
+| `tests/plugin/run.sh` | Plugin-Test unter Linux mit dem AMAN im Browser im Plugin-Modus |
 | `tests/engine.js` | Rechenkern-Test mit der Simulation: Landeabstände, Runway Change mit 15-NM-Regel, Bahnwechsel aus EuroScope, 7000-ft-Grenze |
 
 ## Test

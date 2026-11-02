@@ -33,9 +33,9 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     --bg: #e4e6e8; --panel: #e4e6e8; --frame: #5b5f64; --frame-hi: #a9adb2; --frame-lo: #8b8f94;
-    --fg: #000; --muted: #4f545a; --tick: #000; --label-bg: #f6f6f6; --miles: #087a2a;
+    --fg: #000; --muted: #4f545a; --tick: #000; --label-bg: #cdd0d4; --miles: #087a2a;
     --static: #1f3cf5; --static-fg: #fff; --hatch: #d0521e; --now: #cc1f18;
-    --iaf-ROKIL: #6a6e73; --iaf-LANDU: #1d3de0; --iaf-BETOS: #7d6400; --iaf-NAPSA: #cc1f18; --focus: #1d3de0;
+    --iaf-ROKIL: #6a6e73; --iaf-LANDU: #1d3de0; --iaf-BETOS: #e6cc00; --iaf-NAPSA: #cc1f18; --focus: #1d3de0;
     --bar: #c9ccd0; --bar-thumb: #7d8186; --title-fg: #222; --vbar: #d3d6d9; --vbar-thumb: #9a9ea3;
     --menu-bg: #f2f2f2; --disabled: #a3a7ab; --sheet-bg: #eceef0; --rwyc: #087a2a; --err: #b3150e;
     color-scheme: light;
@@ -43,9 +43,9 @@
 }
 :root[data-theme="light"] {
   --bg: #e4e6e8; --panel: #e4e6e8; --frame: #5b5f64; --frame-hi: #a9adb2; --frame-lo: #8b8f94;
-  --fg: #000; --muted: #4f545a; --tick: #000; --label-bg: #f6f6f6; --miles: #087a2a;
+  --fg: #000; --muted: #4f545a; --tick: #000; --label-bg: #cdd0d4; --miles: #087a2a;
   --static: #1f3cf5; --static-fg: #fff; --hatch: #d0521e; --now: #cc1f18;
-  --iaf-ROKIL: #6a6e73; --iaf-LANDU: #1d3de0; --iaf-BETOS: #7d6400; --iaf-NAPSA: #cc1f18; --focus: #1d3de0;
+  --iaf-ROKIL: #6a6e73; --iaf-LANDU: #1d3de0; --iaf-BETOS: #e6cc00; --iaf-NAPSA: #cc1f18; --focus: #1d3de0;
   --bar: #c9ccd0; --bar-thumb: #7d8186; --title-fg: #222; --vbar: #d3d6d9; --vbar-thumb: #9a9ea3;
   --menu-bg: #f2f2f2; --disabled: #a3a7ab; --sheet-bg: #eceef0; --rwyc: #087a2a; --err: #b3150e;
   color-scheme: light;
@@ -113,6 +113,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 .label .shape { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .label .cs { position: relative; white-space: nowrap; letter-spacing: .01em; min-width: 8.2ch; }
 .label .wtc { position: relative; min-width: 1ch; }
+/* Schrift in Box-Farbe (z. B. SOTOV gelb): in der hellen Ansicht mit feinem dunklen Rand, damit Gelb lesbar bleibt */
+:root[data-theme="light"] .label .boxtxt-BETOS { -webkit-text-stroke: .7px #3a3300; paint-order: stroke fill; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .label .boxtxt-BETOS { -webkit-text-stroke: .7px #3a3300; paint-order: stroke fill; } }
 .label .mi { position: relative; margin-left: auto; color: var(--miles); font-size: 21px; font-variant-numeric: tabular-nums; }
 .label .st { position: absolute; top: 3px; bottom: 3px; width: 12px; background: var(--static); }
 .label .strokes { position: relative; margin-left: auto; display: flex; gap: 3px; }
@@ -133,6 +136,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 .rwy-l { font: 700 17px var(--font-ui); }
 .rwy-v { justify-self: end; border: 3px solid var(--frame); padding: 4px 22px; min-width: 64px; text-align: center; font: 700 36px var(--font-ui); font-variant-numeric: tabular-nums; }
 .rwy-auto { font-size: 10px; color: var(--muted); }
+/* neue Betriebsrichtung blinkt nach dem Wechsel 10 s lang */
+.rwy-v.blink { animation: rwyblink 1s steps(1, end) 10; }
+@keyframes rwyblink { 0% { color: var(--fg); } 50% { color: transparent; } }
 .rwy-next { grid-column: 1; align-self: end; font: 700 13px var(--font-mono); color: var(--rwyc); white-space: nowrap; }
 .len { display: flex; align-items: center; gap: 10px; margin-top: 12px; font: 700 15px var(--font-ui); }
 .len input { flex: 1; min-width: 0; accent-color: var(--bar-thumb); }
@@ -162,8 +168,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 .status b { color: var(--fg); font-weight: 400; }
 
 /* Hinweise am Schirm */
-.stale { position: absolute; z-index: 20; top: 50px; left: 50%; transform: translateX(-50%); background: var(--now); color: #fff; font: 700 18px var(--font-ui); padding: 6px 14px; letter-spacing: .04em; white-space: nowrap; }
-.scope.stale .cols { opacity: .45; }
+.stale-banner { position: absolute; z-index: 20; top: 50px; left: 50%; transform: translateX(-50%); background: var(--now); color: #fff; font: 700 18px var(--font-ui); padding: 6px 14px; letter-spacing: .04em; white-space: nowrap; }
+.scope.is-stale .cols { opacity: .45; }
 .empty { position: absolute; top: 45%; left: 0; right: 0; text-align: center; font: 15px var(--font-ui); color: var(--muted); }
 .label.flash .shape polygon { stroke-width: 5; }
 .label.flash { outline: 2px dashed var(--fg); outline-offset: 3px; }
@@ -261,4 +267,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
   .label .strokes i { width: 5px; }
   .holdbox { margin-top: 0; min-height: 120px; }
 }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

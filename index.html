@@ -9,25 +9,25 @@
 </head>
 <body>
 <div class="app" id="app">
-  <main class="scope" id="scope" aria-label="Arrival-Sequenz">
+  <main class="scope" id="scope" aria-label="Arrival sequence">
     <div class="frame-title" id="frameTitle">AMAN EDDM</div>
     <div class="scope-bar" aria-hidden="true"><i></i></div>
-    <div class="stale" id="stale" role="alert" hidden></div>
+    <div class="stale-banner" id="stale" role="alert" hidden></div>
     <div class="cols" id="cols"></div>
   </main>
 
-  <aside class="side" id="side" aria-label="Bedienung">
-    <button class="btn-exit" id="btnMenu" type="button" title="Einstellungen">MENU</button>
+  <aside class="side" id="side" aria-label="Controls">
+    <button class="btn-exit" id="btnMenu" type="button" title="Settings">MENU</button>
 
     <div class="box rwybox">
-      <button class="rwy" id="btnRwy" type="button" aria-haspopup="dialog" title="Runway Change und Bahnsperre">
+      <button class="rwy" id="btnRwy" type="button" aria-haspopup="dialog" title="Runway change and runway closure">
         <span class="rwy-l">RWY</span>
         <span class="rwy-v" id="rwyVal">26</span>
         <span class="rwy-auto" id="rwyAuto" hidden>AUTO</span>
         <span class="rwy-next" id="rwyNext"></span>
       </button>
       <label class="len" for="len">
-        <input type="range" id="len" min="20" max="90" step="5" value="45" aria-label="Laenge Zeitstrahl in Minuten">
+        <input type="range" id="len" min="20" max="90" step="5" value="45" aria-label="Timeline length in minutes">
         <span id="lenVal">45</span>
       </label>
     </div>
@@ -35,7 +35,7 @@
     <div class="dirwarn" id="dirWarn" role="status" hidden></div>
     <button class="btn-undo" id="btnUndo" type="button" disabled>UNDO</button>
 
-    <div class="holdbox" id="holdBox" aria-label="Hold-Feld">
+    <div class="holdbox" id="holdBox" aria-label="Hold list">
       <div class="hold-title">HOLD</div>
       <ul class="hold-list" id="holdList"></ul>
       <div class="vscroll" aria-hidden="true"><i></i></div>
@@ -46,49 +46,49 @@
   </aside>
 </div>
 
-<div class="acmenu" id="acmenu" role="menu" aria-label="Flieger" hidden></div>
+<div class="acmenu" id="acmenu" role="menu" aria-label="Aircraft" hidden></div>
 <div class="insmark" id="insMark" hidden></div>
 
 <div class="dlg-back" id="rwyDlg" hidden>
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="rwyDlgTitle">
     <div class="dlg-head">
       <strong id="rwyDlgTitle">RUNWAY</strong>
-      <button class="btn-small" id="rwyClose" type="button" aria-label="Schliessen">X</button>
+      <button class="btn-small" id="rwyClose" type="button" aria-label="Close">X</button>
     </div>
 
     <section aria-labelledby="hCh">
       <h3 id="hCh">Runway Change</h3>
       <div class="row">
-        <span id="lblChDir">Neue Richtung</span>
+        <span id="lblChDir">New direction</span>
         <div class="seg" id="chDir" role="group" aria-labelledby="lblChDir">
           <button type="button" data-dir="26">26</button><button type="button" data-dir="08">08</button>
         </div>
       </div>
       <fieldset class="when">
-        <legend>Zeitpunkt</legend>
-        <label><input type="radio" name="chWhen" value="now"> ab jetzt</label>
-        <label><input type="radio" name="chWhen" value="at" checked> um <input type="text" id="chTime" class="hhmm" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off" aria-label="Uhrzeit Runway Change UTC"> UTC</label>
+        <legend>Time</legend>
+        <label><input type="radio" name="chWhen" value="now"> now</label>
+        <label><input type="radio" name="chWhen" value="at" checked> at <input type="text" id="chTime" class="hhmm" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off" aria-label="Runway change time UTC"> UTC</label>
       </fieldset>
-      <button class="btn-act" id="btnChSet" type="button">RWY CHANGE SETZEN</button>
+      <button class="btn-act" id="btnChSet" type="button">SET RWY CHANGE</button>
       <div class="planned" id="chPlanned"></div>
     </section>
 
     <section aria-labelledby="hCl">
-      <h3 id="hCl">Bahnsperre</h3>
+      <h3 id="hCl">Runway closure</h3>
       <div class="row">
-        <label for="clSide">Bahn</label>
-        <select id="clSide"><option value="N">Nord</option><option value="S">Sued</option><option value="B">beide</option></select>
+        <label for="clSide">Runway</label>
+        <select id="clSide"><option value="N">North</option><option value="S">South</option><option value="B">Both</option></select>
       </div>
       <fieldset class="when">
-        <legend>Beginn</legend>
-        <label><input type="radio" name="clWhen" value="now" checked> ab jetzt</label>
-        <label><input type="radio" name="clWhen" value="at"> um <input type="text" id="clFrom" class="hhmm" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off" aria-label="Beginn der Sperre UTC"> UTC</label>
+        <legend>From</legend>
+        <label><input type="radio" name="clWhen" value="now" checked> now</label>
+        <label><input type="radio" name="clWhen" value="at"> at <input type="text" id="clFrom" class="hhmm" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off" aria-label="Closure start UTC"> UTC</label>
       </fieldset>
       <div class="row">
-        <label for="clTo">Ende um (UTC)</label>
+        <label for="clTo">Until (UTC)</label>
         <input type="text" id="clTo" class="hhmm" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off">
       </div>
-      <button class="btn-act" id="btnAddClosure" type="button">SPERRE SETZEN</button>
+      <button class="btn-act" id="btnAddClosure" type="button">SET CLOSURE</button>
       <ul class="cl-list" id="clList"></ul>
     </section>
     <p class="dlg-info" id="rwyInfo" role="status"></p>
@@ -97,56 +97,56 @@
 </div>
 
 <div class="sheet" id="sheet" hidden>
-  <div class="sheet-inner" role="dialog" aria-label="Einstellungen">
+  <div class="sheet-inner" role="dialog" aria-label="Settings">
     <div class="sheet-head">
-      <strong>Einstellungen</strong>
-      <button class="btn-small" id="btnClose" type="button">SCHLIESSEN</button>
+      <strong>Settings</strong>
+      <button class="btn-small" id="btnClose" type="button">CLOSE</button>
     </div>
 
     <div class="status" id="status"></div>
 
     <section>
-      <h3>Datenquelle und Ansicht</h3>
+      <h3>Data source and view</h3>
       <div class="row">
-        <label for="selSource">Quelle</label>
+        <label for="selSource">Source</label>
         <select id="selSource">
-          <option value="plugin">EuroScope-Plugin</option>
+          <option value="plugin">EuroScope plugin</option>
           <option value="sim">Simulation</option>
         </select>
       </div>
       <div class="row">
-        <label for="selView">Ansicht</label>
+        <label for="selView">View</label>
         <select id="selView">
-          <option value="auto">Automatisch nach Callsign</option>
+          <option value="auto">Automatic by callsign</option>
           <option value="APP">APP</option>
           <option value="TWR">TWR</option>
         </select>
       </div>
       <div class="row">
-        <label for="selTheme">Darstellung</label>
+        <label for="selTheme">Theme</label>
         <select id="selTheme">
-          <option value="dark">dunkel</option>
-          <option value="light">hell</option>
-          <option value="system">wie System</option>
+          <option value="dark">dark</option>
+          <option value="light">light</option>
+          <option value="system">follow system</option>
         </select>
       </div>
     </section>
 
     <section>
-      <h3>Staffelung</h3>
+      <h3>Spacing</h3>
       <div class="row">
-        <label for="selGs">Umrechnung NM in Zeit</label>
+        <label for="selGs">NM to time conversion</label>
         <select id="selGs">
-          <option value="typwind">Typ und Wind</option>
-          <option value="fixed">fix 140 kt</option>
+          <option value="typwind">type and wind</option>
+          <option value="fixed">fixed 140 kt</option>
         </select>
       </div>
       <div class="row">
-        <label for="rateN">Landerate Nord pro h</label>
+        <label for="rateN">Landing rate North per h</label>
         <input type="number" id="rateN" min="10" max="60" step="1">
       </div>
       <div class="row">
-        <label for="rateS">Landerate Sued pro h</label>
+        <label for="rateS">Landing rate South per h</label>
         <input type="number" id="rateS" min="10" max="60" step="1">
       </div>
     </section>
@@ -154,26 +154,26 @@
     <section id="simSection">
       <h3>Simulation</h3>
       <div class="row">
-        <label for="simRate">Anmeldungen pro h</label>
+        <label for="simRate">Arrivals per h</label>
         <select id="simRate"><option>20</option><option>40</option><option selected>60</option><option>90</option></select>
       </div>
       <div class="row">
-        <label for="simSpeed">Tempo</label>
+        <label for="simSpeed">Speed</label>
         <select id="simSpeed"><option value="1">1x</option><option value="2">2x</option><option value="5" selected>5x</option><option value="10">10x</option></select>
       </div>
       <div class="row">
-        <label for="simWind">Bodenwind</label>
+        <label for="simWind">Surface wind</label>
         <select id="simWind">
-          <option value="0/0">ruhig</option>
+          <option value="0/0">calm</option>
           <option value="250/10" selected>250/10</option>
           <option value="260/25">260/25</option>
           <option value="080/15">080/15</option>
         </select>
       </div>
-      <button class="btn-small" id="btnSimReset" type="button">SIMULATION NEU STARTEN</button>
+      <button class="btn-small" id="btnSimReset" type="button">RESTART SIMULATION</button>
     </section>
 
-    <p class="hint">Bedienung als APP: Label ziehen zum Tauschen oder auf die andere Bahn, ins Hold-Feld ziehen zum Rausnehmen. Klick auf ein Label oeffnet das Menue mit CHANGE RWY, HOLD und RECOMPUTE. Aus dem Hold-Feld ziehst du Flieger direkt zurueck auf eine Bahn. Klick auf den RWY-Kasten: Runway Change (sofort oder zu einer Uhrzeit) und Bahnsperren. Ein geplanter Wechsel steht als gruen gestrichelte Linie am Zeitstrahl. Die Anzeige wird alle 5 Sekunden aktualisiert. Klick auf „static“ friert die Sequenz ein. FLOW unten aendert den Abstand pro Bahn.</p>
+    <p class="hint">As APP: drag a label to swap or onto the other runway, drag it into the hold list to take it out. Click a label for CHANGE RWY, HOLD and RECOMPUTE. Drag aircraft from the hold list straight back onto a runway. Click the RWY box for runway change (now or at a time) and runway closures; a planned change shows as a green dashed line on the timeline. UNDO (Ctrl+Z) reverts the last action. The display updates every 5 seconds. Click "static" to freeze the sequence. FLOW at the bottom sets the spacing per runway.</p>
   </div>
 </div>
 

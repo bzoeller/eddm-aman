@@ -48,7 +48,7 @@
     bindUi();
     startSource();
   }).catch(err => {
-    $('status').textContent = 'Konfiguration eddm.json nicht gefunden: ' + err.message;
+    $('status').textContent = 'Configuration eddm.json not found: ' + err.message;
   });
 
   function applyTheme() {
@@ -100,18 +100,19 @@
       return r.json();
     }).then(d => {
       if (my !== pollSeq) return;
-      if (!d || typeof d !== 'object') throw new Error('leere Antwort');
+      if (!d || typeof d !== 'object') throw new Error('empty response');
       me = d.me && typeof d.me === 'object' ? d.me : null;
       metar = typeof d.metar === 'string' ? d.metar : null;
       online = Array.isArray(d.controllers) ? d.controllers.map(c => (c && c.callsign) || c).filter(c => typeof c === 'string') : null;
       const rw = Array.isArray(d.arrRwys) ? d.arrRwys.map(String) : [];
       traffic = { aircraft: Array.isArray(d.aircraft) ? d.aircraft : [], activeDir: rw.some(r => /^08/.test(r)) ? '08' : (rw.some(r => /^26/.test(r)) ? '26' : null) };
       dataTime = typeof d.time === 'number' && isFinite(d.time) ? d.time : Date.now() / 1000;
-      lastData = Date.now(); connErr = null;
+      // veraltet zaehlt ab dem Zeitstempel der Daten: so faellt auch ein haengendes EuroScope auf
+      lastData = typeof d.time === 'number' && isFinite(d.time) ? Math.min(Date.now(), d.time * 1000) : Date.now(); connErr = null;
       tick();
     }).catch(e => {
       if (my !== pollSeq) return;
-      connErr = e && e.name === 'AbortError' ? 'Plugin antwortet nicht' : 'Keine Verbindung zum Plugin (' + ((e && e.message) || 'Fehler') + ')';
+      connErr = e && e.name === 'AbortError' ? 'Plugin not responding' : 'No connection to plugin (' + ((e && e.message) || 'error') + ')';
       tick();
     }).finally(() => {
       clearTimeout(to);
@@ -211,7 +212,7 @@
       flowEl = flow;
       flowInput = document.createElement('input');
       flowInput.type = 'number'; flowInput.step = '0.5'; flowInput.min = '2.5'; flowInput.max = '20'; flowInput.id = 'flow' + side;
-      flowInput.setAttribute('aria-label', 'Abstand ' + name + ' in NM');
+      flowInput.setAttribute('aria-label', 'Spacing ' + name + ' in NM');
       flowInput.addEventListener('change', () => {
         const v = Math.max(2.5, Math.min(20, parseFloat(flowInput.value) || cfg.defaults.spacingNm));
         engine.state.spacing[side] = v; save(); tick();
@@ -289,13 +290,13 @@
       s += '<rect x="0" y="' + yTop + '" width="' + g.W + '" height="' + (yBot - yTop) + '" fill="url(#hatch' + c.side + ')"/>';
       if (canEdit()) {
         const b = document.createElement('button');
-        b.type = 'button'; b.className = 'closure-x'; b.textContent = 'SPERRE AUFHEBEN';
-        b.title = (c.side === 'N' ? 'Nord ' : 'Sued ') + hhmm(cl.from) + ' bis ' + hhmm(cl.to);
+        b.type = 'button'; b.className = 'closure-x'; b.textContent = 'LIFT CLOSURE';
+        b.title = (c.side === 'N' ? 'North ' : 'South ') + hhmm(cl.from) + '-' + hhmm(cl.to);
         b.style.top = (yTop + 34) + 'px';
         b.style[c.side === 'N' ? 'left' : 'right'] = '8px';
         b.addEventListener('click', () => {
-          if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'WIRKLICH AUFHEBEN?'; setTimeout(() => { if (b.isConnected) { b.dataset.armed = ''; b.textContent = 'SPERRE AUFHEBEN'; } }, 4000); return; }
-          snapshot('Sperre aufheben'); engine.removeClosure(cl.id); save(); tick();
+          if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'CONFIRM LIFT?'; setTimeout(() => { if (b.isConnected) { b.dataset.armed = ''; b.textContent = 'LIFT CLOSURE'; } }, 4000); return; }
+          snapshot('lift closure'); engine.removeClosure(cl.id); save(); tick();
         });
         c.el.appendChild(b); c.closeBtns.push(b);
       }
@@ -387,7 +388,7 @@
         right = '<span class="mi">' + Math.round(it.remainingNm) + '</span>';
       }
       const st = engine.state.staticMode ? '<span class="st" style="' + (pointsRight ? 'left' : 'right') + ':4px"></span>' : '';
-      const man = it.locked ? '<span class="man" title="manuell platziert"></span>' : '';
+      const man = it.locked ? '<span class="man" title="placed manually"></span>' : '';
       // Schriftfarbe nach Strom: z. B. SOTOV T101 und REDBU Q112 in der Farbe der Box, sonst weiss
       const sdef = it.stream && cfg.iafs[it.iaf].streams ? cfg.iafs[it.iaf].streams[it.stream] : null;
       const txt = sdef && sdef.text === 'box' ? ' style="color:' + color + '"' : '';
@@ -395,8 +396,8 @@
       el.classList.toggle('flash', (flash[it.cs] || 0) > Date.now());
       if (el.dataset.sig !== sig) {
         el.dataset.sig = sig;
-        el.innerHTML = labelSvg(labelW, LH, pointsRight, color) + st + man + '<span class="cs"' + txt + '>' + esc(it.cs) + '</span><span class="wtc"' + txt + '>' + wtc + '</span>' + right;
-        el.setAttribute('aria-label', it.cs + (wtc ? ' ' + wtc : '') + (it.stream ? ' via ' + it.stream : '') + ', ' + hhmm(it._t) + (mode === 'ctr' ? ', ' + (it.ctrStrokes || 0) + ' Minuten verlieren' : ', ' + Math.round(it.remainingNm) + ' NM'));
+        el.innerHTML = labelSvg(labelW, LH, pointsRight, color) + st + man + '<span class="cs' + (txt ? ' boxtxt-' + it.iaf : '') + '"' + txt + '>' + esc(it.cs) + '</span><span class="wtc' + (txt ? ' boxtxt-' + it.iaf : '') + '"' + txt + '>' + wtc + '</span>' + right;
+        el.setAttribute('aria-label', it.cs + (wtc ? ' ' + wtc : '') + (it.stream ? ' via ' + it.stream : '') + ', ' + hhmm(it._t) + (mode === 'ctr' ? ', ' + (it.ctrStrokes || 0) + ' min to lose' : ', ' + Math.round(it.remainingNm) + ' NM'));
       }
     }
     for (const cs of Object.keys(c.labels)) if (!keep[cs]) { c.labels[cs].remove(); delete c.labels[cs]; }
@@ -404,7 +405,7 @@
     // leere Ansicht von einem Ausfall unterscheiden
     let em = c.el.querySelector('.empty');
     if (!em) { em = document.createElement('div'); em.className = 'empty'; c.el.appendChild(em); }
-    em.textContent = sorted.length ? '' : (mode === 'ctr' ? 'keine Anfluege' : '');
+    em.textContent = sorted.length ? '' : (mode === 'ctr' ? 'no arrivals' : '');
     em.hidden = !!sorted.length || mode !== 'ctr';
   }
 
@@ -437,12 +438,20 @@
       }
     }
     $('rwyVal').textContent = last.dir || '26';
+    // Betriebsrichtung gewechselt (sofort oder zum geplanten Zeitpunkt): neue Richtung blinkt 10 s
+    if (render.dir && last.dir && render.dir !== last.dir) {
+      const v = $('rwyVal');
+      v.classList.remove('blink'); void v.offsetWidth; v.classList.add('blink');
+      clearTimeout(render.blinkTimer);
+      render.blinkTimer = setTimeout(() => v.classList.remove('blink'), 10000);
+    }
+    render.dir = last.dir;
     $('rwyNext').textContent = last.dirChange ? '\u2192' + last.dirChange.to + ' ' + hhmm(last.dirChange.at) : '';
     if (!$('rwyDlg').hidden) syncRwyDlg(false);
     // EuroScope dreht das AMAN nicht mit; passt die Richtung dort nicht, gibt es am Rand eine Meldung
     const es = last.esDir, wEl = $('dirWarn');
     const warn = es && es !== last.dir
-      ? 'RWY MISMATCH: EuroScope ' + es + ', AMAN ' + last.dir + (last.dirChange && last.dirChange.to === es ? ' (Wechsel auf ' + es + ' um ' + hhmm(last.dirChange.at) + ' geplant)' : '')
+      ? 'RWY MISMATCH: EuroScope ' + es + ', AMAN ' + last.dir + (last.dirChange && last.dirChange.to === es ? ' (change to ' + es + ' planned at ' + hhmm(last.dirChange.at) + ')' : '')
       : '';
     if (wEl.textContent !== warn) wEl.textContent = warn;
     wEl.hidden = !warn;
@@ -462,7 +471,7 @@
     const stale = !simApi && sec > 15;
     b.hidden = !stale;
     if (stale) b.textContent = 'DATA STALE ' + (isFinite(sec) ? Math.round(sec) + ' s' : '') + (connErr ? ' \u2013 ' + connErr : '');
-    $('scope').classList.toggle('stale', stale);
+    $('scope').classList.toggle('is-stale', stale);
     renderStatus();
   }
 
@@ -480,7 +489,7 @@
       li.dataset.cs = cs;
       li.tabIndex = 0;
       li.classList.toggle('editable', ed);
-      li.title = ed ? 'Auf Nord- oder Suedbahn ziehen, um den Flieger wieder einzuplanen' : '';
+      li.title = ed ? 'Drag onto North or South to sequence again' : '';
       li.addEventListener('pointerdown', onPointerDown);
       li.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenuAt(cs, li); } });
       ul.appendChild(li);
@@ -491,7 +500,7 @@
     const s = engine.stats(side);
     const f1 = n => n.toFixed(1);
     $('stats' + side).innerHTML =
-      '<table aria-label="Statistik ' + (side === 'N' ? 'Nordbahn' : 'Suedbahn') + '"><tr><th>' + side + '</th><th>FLW</th><th>DEM</th><th>CNT</th></tr>' +
+      '<table aria-label="Statistics ' + (side === 'N' ? 'North' : 'South') + '"><tr><th>' + side + '</th><th>FLW</th><th>DEM</th><th>CNT</th></tr>' +
       '<tr><td></td><td>' + s.flw + '</td><td>' + s.dem + '</td><td>' + s.cnt + '</td></tr>' +
       '<tr><td class="k">' + side + '</td>' + s.win.map(w => '<td>' + w.min + '</td>').join('') + '</tr>' +
       '<tr><td class="k">LND</td>' + s.win.map(w => '<td>' + w.lnd + '</td>').join('') + '</tr>' +
@@ -503,11 +512,11 @@
     const wf = x => x ? pad3(x.dir) + '/' + pad(x.spd) : '---';
     const lines = [];
     if (simApi) lines.push('<b>Simulation</b> ' + settings.simRate + '/h, ' + settings.simSpeed + 'x');
-    else lines.push(connErr ? '<b>' + esc(connErr) + '</b>' : '<b>' + esc((me && me.callsign) || 'nicht verbunden') + '</b> ' + role());
-    lines.push('Ansicht ' + viewKey() + (canEdit() ? ', Eingriffe frei' : ', nur Anzeige'));
-    lines.push('Wind Boden ' + wf(w.surface) + ', FL100 ' + wf(w.aloft));
-    lines.push('Final-GS ' + (engine.state.finalGsMode === 'fixed' ? 'fix 140 kt' : 'Typ und Wind'));
-    lines.push(engine.last.list.length + ' Flieger erfasst');
+    else lines.push(connErr ? '<b>' + esc(connErr) + '</b>' : '<b>' + esc((me && me.callsign) || 'not connected') + '</b> ' + role());
+    lines.push('View ' + viewKey() + (canEdit() ? ', control enabled' : ', display only'));
+    lines.push('Wind surface ' + wf(w.surface) + ', FL100 ' + wf(w.aloft));
+    lines.push('Final-GS ' + (engine.state.finalGsMode === 'fixed' ? 'fixed 140 kt' : 'type and wind'));
+    lines.push(engine.last.list.length + ' aircraft tracked');
     $('status').innerHTML = lines.join('<br>');
   }
   const pad3 = n => String(n).padStart(3, '0');
@@ -593,7 +602,7 @@
           const r = l.getBoundingClientRect();
           if (r.top + r.height / 2 > y) idx++;
         }
-        snapshot('Verschieben ' + d.cs); mark(d.cs);
+        snapshot('move ' + d.cs); mark(d.cs);
         engine.moveTo(d.cs, side, idx);
       }
     }
@@ -655,7 +664,7 @@
   function syncUndo() {
     const b = $('btnUndo'), u = undoStack[undoStack.length - 1];
     b.disabled = !u || !canEdit();
-    b.title = u ? 'Zuruecknehmen: ' + u.what + ' (Strg+Z)' : 'Nichts zum Zuruecknehmen';
+    b.title = u ? 'Undo: ' + u.what + ' (Ctrl+Z)' : 'Nothing to undo';
   }
   const mark = cs => { flash[cs] = Date.now() + 5000; };
 
@@ -744,7 +753,7 @@
     pending = { key };
     $('rwyErr').textContent = '';
     $('rwyInfo').textContent = text;
-    btn.textContent = 'BESTAETIGEN';
+    btn.textContent = 'CONFIRM';
     return false;
   }
   function affected(side, from, to) {
@@ -772,7 +781,7 @@
     $('clTo').value = toInput(roundUp(now + 30 * 60, 5));
     document.querySelector('input[name=chWhen][value=at]').checked = true;
     document.querySelector('input[name=clWhen][value=at]').checked = true;
-    pending = null; $('btnAddClosure').textContent = 'SPERRE SETZEN'; $('btnChSet').textContent = 'RWY CHANGE SETZEN';
+    pending = null; $('btnAddClosure').textContent = 'SET CLOSURE'; $('btnChSet').textContent = 'SET RWY CHANGE';
     $('rwyErr').textContent = '';
     syncRwyDlg(true);
     $('rwyDlg').hidden = false;
@@ -788,16 +797,16 @@
       pl.dataset.sig = sig;
       pl.innerHTML = '';
       if (chg) {
-        const t = document.createElement('span'); t.textContent = 'Geplant: RWY ' + cur + ' \u2192 ' + chg.to + ' um ' + hhmm(chg.at);
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-small'; b.textContent = 'LOESCHEN';
-        b.addEventListener('click', () => { snapshot('RWY CHANGE loeschen'); engine.clearDirChange(); save(); tick(); syncRwyDlg(true); });
+        const t = document.createElement('span'); t.textContent = 'Planned: RWY ' + cur + ' \u2192 ' + chg.to + ' at ' + hhmm(chg.at);
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-small'; b.textContent = 'DELETE';
+        b.addEventListener('click', () => { snapshot('delete RWY change'); engine.clearDirChange(); save(); tick(); syncRwyDlg(true); });
         pl.append(t, b);
       }
     }
     // Bahnnamen in der aktuellen Richtung
     const ids = s2 => cfg.runways[s2].ids[cur];
     const o = $('clSide').options;
-    o[0].textContent = 'Nord ' + ids('N'); o[1].textContent = 'Sued ' + ids('S'); o[2].textContent = 'beide';
+    o[0].textContent = 'North'; o[1].textContent = 'South'; o[2].textContent = 'Both';
     const ul = $('clList');
     const csig = engine.state.closures.map(c => c.id + ':' + c.to).join(',') + cur;
     if (!full && ul.dataset.sig === csig) return;
@@ -807,11 +816,11 @@
       if (c.to < nowSec()) continue;
       const li = document.createElement('li');
       const t = document.createElement('span');
-      t.textContent = (c.side === 'N' ? 'Nord ' + ids('N') : 'Sued ' + ids('S')) + '  ' + hhmm(c.from) + ' bis ' + hhmm(c.to);
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-small'; b.textContent = 'AUFHEBEN';
+      t.textContent = (c.side === 'N' ? 'North' : 'South') + '  ' + hhmm(c.from) + '-' + hhmm(c.to);
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-small'; b.textContent = 'LIFT';
       b.addEventListener('click', () => {
-        if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'BESTAETIGEN'; return; }
-        snapshot('Sperre aufheben'); engine.removeClosure(c.id); save(); tick(); syncRwyDlg(true);
+        if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'CONFIRM'; return; }
+        snapshot('lift closure'); engine.removeClosure(c.id); save(); tick(); syncRwyDlg(true);
       });
       li.append(t, b);
       ul.appendChild(li);
@@ -832,8 +841,8 @@
       else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
     });
     // jede Aenderung an den Eingaben verwirft eine offene Bestaetigung
-    $('rwyDlg').addEventListener('input', () => { if (pending) { pending = null; $('rwyInfo').textContent = ''; $('btnAddClosure').textContent = 'SPERRE SETZEN'; $('btnChSet').textContent = 'RWY CHANGE SETZEN'; } });
-    $('chDir').addEventListener('click', () => { if (pending) { pending = null; $('rwyInfo').textContent = ''; $('btnChSet').textContent = 'RWY CHANGE SETZEN'; } });
+    $('rwyDlg').addEventListener('input', () => { if (pending) { pending = null; $('rwyInfo').textContent = ''; $('btnAddClosure').textContent = 'SET CLOSURE'; $('btnChSet').textContent = 'SET RWY CHANGE'; } });
+    $('chDir').addEventListener('click', () => { if (pending) { pending = null; $('rwyInfo').textContent = ''; $('btnChSet').textContent = 'SET RWY CHANGE'; } });
     $('chDir').addEventListener('click', e => { const b = e.target.closest('button[data-dir]'); if (b) { chTarget = b.dataset.dir; syncRwyDlg(false); } });
     $('chTime').addEventListener('input', () => { document.querySelector('input[name=chWhen][value=at]').checked = true; });
     $('clFrom').addEventListener('input', () => { document.querySelector('input[name=clWhen][value=at]').checked = true; });
@@ -842,38 +851,38 @@
       const now = nowSec(), cur = engine.last.dir || '26';
       const when = document.querySelector('input[name=chWhen]:checked').value;
       if (when === 'now') {
-        if (chTarget === cur && !engine.state.dirChange) { err('RWY ' + cur + ' ist bereits aktiv.'); return; }
-        if (!confirmStep($('btnChSet'), 'ch-now-' + chTarget, 'RWY ' + cur + ' \u2192 ' + chTarget + ' SOFORT. ' + engine.last.list.filter(i => !i.passedIaf).length + ' Anfluege werden neu geplant.', 'RWY CHANGE SETZEN')) return;
+        if (chTarget === cur && !engine.state.dirChange) { err('RWY ' + cur + ' is already active.'); return; }
+        if (!confirmStep($('btnChSet'), 'ch-now-' + chTarget, 'RWY ' + cur + ' \u2192 ' + chTarget + ' NOW. ' + engine.last.list.filter(i => !i.passedIaf).length + ' arrivals will be re-planned.', 'SET RWY CHANGE')) return;
         snapshot('RWY CHANGE ' + chTarget);
         engine.setDirChange(chTarget, null);
       } else {
         const at = fromInput($('chTime').value, now);
-        if (at == null) { err('Bitte die Uhrzeit als HH:MM (UTC) eingeben, z. B. 14:20.'); return; }
-        if (at <= now) { err(hhmm(at) + ' liegt in der Vergangenheit. Fuer sofort "ab jetzt" waehlen.'); return; }
-        if (chTarget === cur) { err('RWY ' + cur + ' ist bereits aktiv. Bitte die andere Richtung waehlen.'); return; }
-        if (!confirmStep($('btnChSet'), 'ch-' + chTarget + '-' + at, 'RWY ' + cur + ' \u2192 ' + chTarget + ' um ' + hhmm(at) + '. ' + engine.last.list.filter(i => i.sta >= at).length + ' Anfluege landen danach.', 'RWY CHANGE SETZEN')) return;
+        if (at == null) { err('Enter the time as HH:MM (UTC), e.g. 14:20.'); return; }
+        if (at <= now) { err(hhmm(at) + ' is in the past. Choose "now" for an immediate change.'); return; }
+        if (chTarget === cur) { err('RWY ' + cur + ' is already active. Choose the other direction.'); return; }
+        if (!confirmStep($('btnChSet'), 'ch-' + chTarget + '-' + at, 'RWY ' + cur + ' \u2192 ' + chTarget + ' at ' + hhmm(at) + '. ' + engine.last.list.filter(i => i.sta >= at).length + ' arrivals land after that.', 'SET RWY CHANGE')) return;
         snapshot('RWY CHANGE ' + chTarget + ' ' + hhmm(at));
         engine.setDirChange(chTarget, at);
       }
-      err(''); $('rwyInfo').textContent = 'Gesetzt.'; save(); tick(); syncRwyDlg(true);
+      err(''); $('rwyInfo').textContent = 'Set.'; save(); tick(); syncRwyDlg(true);
     });
     $('btnAddClosure').addEventListener('click', () => {
       if (!canEdit()) return;
       const now = nowSec();
       const from = document.querySelector('input[name=clWhen]:checked').value === 'now' ? now : fromInput($('clFrom').value, now);
-      if (from == null) { err('Bitte den Beginn als HH:MM (UTC) eingeben, z. B. 14:20.'); return; }
-      if (from < now - 60) { err('Beginn ' + hhmm(from) + ' liegt in der Vergangenheit. Fuer sofort "ab jetzt" waehlen.'); return; }
+      if (from == null) { err('Enter the start as HH:MM (UTC), e.g. 14:20.'); return; }
+      if (from < now - 60) { err('Start ' + hhmm(from) + ' is in the past. Choose "now" to close immediately.'); return; }
       let to = fromInput($('clTo').value, from + 43200 - 60);
-      if (to == null) { err('Bitte das Ende als HH:MM (UTC) eingeben, z. B. 14:50.'); return; }
-      if (to <= from) { err('Das Ende muss nach dem Beginn liegen.'); return; }
+      if (to == null) { err('Enter the end as HH:MM (UTC), e.g. 14:50.'); return; }
+      if (to <= from) { err('The end must be after the start.'); return; }
       const sv = $('clSide').value, cur = engine.last.dir || '26';
-      const name = sv === 'B' ? 'beide Bahnen' : (sv === 'N' ? 'Nord ' : 'Sued ') + (sv === 'B' ? '' : cfg.runways[sv].ids[cur]);
-      const txt = name + ' gesperrt ' + hhmm(Math.max(from, now)) + ' bis ' + hhmm(to) + '. ' + affected(sv, Math.max(from, now), to) + ' Anfluege betroffen.';
-      if (!confirmStep($('btnAddClosure'), 'cl-' + sv + '-' + from + '-' + to, txt, 'SPERRE SETZEN')) return;
-      snapshot('Sperre ' + name);
+      const name = sv === 'B' ? 'Both runways' : (sv === 'N' ? 'North' : 'South');
+      const txt = name + ' closed ' + hhmm(Math.max(from, now)) + '-' + hhmm(to) + '. ' + affected(sv, Math.max(from, now), to) + ' arrivals affected.';
+      if (!confirmStep($('btnAddClosure'), 'cl-' + sv + '-' + from + '-' + to, txt, 'SET CLOSURE')) return;
+      snapshot('closure ' + name);
       const sides = sv === 'B' ? ['N', 'S'] : [sv];
       sides.forEach(x => engine.addClosure(x, Math.max(from, now), to));
-      err(''); $('rwyInfo').textContent = 'Gesetzt: ' + txt; save(); tick(); syncRwyDlg(true);
+      err(''); $('rwyInfo').textContent = 'Set: ' + txt; save(); tick(); syncRwyDlg(true);
     });
   }
 })();

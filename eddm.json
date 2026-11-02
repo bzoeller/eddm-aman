@@ -33,7 +33,7 @@
   { "id": "BETOS-FUE", "iaf": "BETOS", "sector": "FUE", "streams": ["DISUN"], "label": "CTR FUE (DISUN T103 BETOS)" },
   { "id": "BETOS-STA", "iaf": "BETOS", "sector": "STA", "streams": ["SOTOV"], "label": "CTR STA (SOTOV T101 BETOS)" },
   { "id": "BETOS", "iaf": "BETOS", "sector": "FUE+STA", "streams": ["DISUN", "SOTOV"], "combine": ["FUE", "STA"], "label": "CTR FUE+STA combined (BETOS)" },
-  { "id": "NAPSA", "iaf": "NAPSA", "sector": "LOVV_B", "callsign": "^LOVV_B\\d?_CTR$", "label": "Wien LOVV_B (NAPSA)" }
+  { "id": "NAPSA", "iaf": "NAPSA", "sector": "LOVV_B", "callsign": "^LOVV_B\\d?_CTR$", "label": "Vienna LOVV_B (NAPSA)" }
  ],
  "holdings": [
   { "fix": "ROKIL", "iaf": "ROKIL", "unit": "APP", "inbound": 126, "turn": "R" },
