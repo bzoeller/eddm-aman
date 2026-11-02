@@ -9,20 +9,25 @@ extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 static CAmanPlugin* g_plugin = nullptr;
 
-/** Ordner "web" neben der DLL: dort liegen index.html, app.js usw. */
-static std::string WebRoot() {
+/** Ordner und Dateiname dieser DLL (darin der Ordner "web" mit der AMAN-Seite). */
+static void ModulePath(std::string& dir, std::string& name) {
 #ifdef _WIN32
     char path[MAX_PATH] = {0};
     GetModuleFileNameA(reinterpret_cast<HINSTANCE>(&__ImageBase), path, MAX_PATH);
     std::string p(path);
-    return p.substr(0, p.find_last_of("\\/")) + "\\web";
+    size_t k = p.find_last_of("\\/");
+    dir = p.substr(0, k);
+    name = p.substr(k + 1);
 #else
-    return "web";
+    dir = ".";
+    name = "EDDM-AMAN.dll";
 #endif
 }
 
 void __declspec(dllexport) EuroScopePlugInInit(EuroScopePlugIn::CPlugIn** ppPlugInInstance) {
-    *ppPlugInInstance = g_plugin = new CAmanPlugin(WebRoot());
+    std::string dir, name;
+    ModulePath(dir, name);
+    *ppPlugInInstance = g_plugin = new CAmanPlugin(dir, name);
 }
 
 void __declspec(dllexport) EuroScopePlugInExit(void) {

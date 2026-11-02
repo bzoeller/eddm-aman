@@ -137,6 +137,25 @@
             // Eintritt auf dem neuen Downwind etwas voraus: naechster Punkt plus 3 NM
             let best = null;
             for (let sx = D.sDw; sx < D.sAb; sx += 0.5) { const q = Core.pointAt(D.path, sx); const dd = Math.hypot(q.x - ac.x, q.y - ac.y); if (!best || dd < best.d) best = { s: sx, d: dd }; }
+            // kreuzt der Weg dorthin die verlaengerte Anfluglinie ab 8 NM, dreht APP den Flieger direkt aufs Final
+            // (dieselbe Regel wie im AMAN)
+            {
+              const P2 = D.path, fi = P2.pts.findIndex(q => q.name === 'FAP15');
+              const thr = P2.pts[P2.pts.length - 1], fap = P2.pts[fi], Lf = Math.hypot(fap.x - thr.x, fap.y - thr.y) || 1;
+              const ox = (fap.x - thr.x) / Lf, oy = (fap.y - thr.y) / Lf;
+              const J = Core.pointAt(P2, Math.min(D.sAb, best.s + 3));
+              const vx = J.x - ac.x, vy = J.y - ac.y;
+              const ex = ox * 30, ey = oy * 30, den = vx * ey - vy * ex;
+              if (fi > 0 && Math.abs(den) > 1e-6) {
+                const wx = thr.x - ac.x, wy = thr.y - ac.y;
+                const u = (wx * ey - wy * ex) / den, f = (wx * vy - wy * vx) / den;
+                if (u > 0 && u < 1 && f * 30 >= 8 && f <= 1) {
+                  const r = Math.min(15, f * 30);
+                  ac.phase = 'direct'; ac.path = P2; ac.sT = P2.length - r; ac.rwy = rwy;
+                  continue;
+                }
+              }
+            }
             ac.phase = 'direct'; ac.path = D.path; ac.sT = Math.min(D.sAb, best.s + 3); ac.rwy = rwy;
             continue;
           }

@@ -1,6 +1,15 @@
 #include "AmanPlugin.h"
+#include "Updater.h"
+
+#ifndef AMAN_VERSION
+#  define AMAN_VERSION "0.0.0-dev"
+#endif
+#ifndef AMAN_UPDATE_BASE
+#  define AMAN_UPDATE_BASE "https://github.com/bzoeller/eddm-aman/releases"
+#endif
 
 #include <cctype>
+#include <cstdlib>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -34,19 +43,43 @@ std::string upper(const char* s) {
 
 }  // namespace
 
-CAmanPlugin::CAmanPlugin(const std::string& webRoot)
-    : CPlugIn(COMPATIBILITY_CODE, "EDDM AMAN", "1.0.0", "EDDM AMAN", "for VATSIM and simulation only") {
+CAmanPlugin::CAmanPlugin(const std::string& pluginDir, const std::string& dllName)
+    : CPlugIn(COMPATIBILITY_CODE, "EDDM AMAN", AMAN_VERSION, "EDDM AMAN contributors", "MIT License"),
+      pluginDir_(pluginDir), dllName_(dllName) {
     json_ = aman::Snapshot().toJson();
-    server_.reset(new aman::HttpServer(webRoot, [this] { return CurrentJson(); }));
+    server_.reset(new aman::HttpServer(pluginDir + "/web", [this] { return CurrentJson(); }));
     std::string err;
     if (server_->start(kPort, &err))
-        Message("AMAN running: http://127.0.0.1:8471/  (command .aman opens the browser)");
+        Message(std::string("AMAN ") + AMAN_VERSION + " running: http://127.0.0.1:8471/  (command .aman opens the AMAN window)");
     else
         Message("AMAN could not start: " + err);
+    StartUpdateCheck(false);
 }
 
 CAmanPlugin::~CAmanPlugin() {
+    if (updateThread_.joinable()) updateThread_.join();
     if (server_) server_->stop();
+}
+
+void CAmanPlugin::QueueMessage(const std::string& text) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    pending_.push_back(text);
+}
+
+/** Update im Hintergrund pruefen (beim Start und mit ".aman update"). Meldungen erscheinen im EuroScope-Thread. */
+void CAmanPlugin::StartUpdateCheck(bool manual) {
+    if (updating_.exchange(true)) return;
+    if (updateThread_.joinable()) updateThread_.join();
+    std::string base = AMAN_UPDATE_BASE;
+    if (const char* env = std::getenv("AMAN_UPDATE_BASE")) base = env;   // nur fuer Tests
+    updateThread_ = std::thread([this, manual, base] {
+        aman::Updater up(pluginDir_, dllName_, AMAN_VERSION, base, aman::httpGet, [this](const std::string& m) { QueueMessage("AMAN " + m); });
+        up.cleanup();
+        std::string v = up.checkAndApply();
+        if (!v.empty()) QueueMessage("AMAN updated to " + v + ": AMAN page is new now (reload with F5), plugin after restarting EuroScope.");
+        else if (manual) QueueMessage(std::string("AMAN ") + AMAN_VERSION + " is up to date.");
+        updating_ = false;
+    });
 }
 
 void CAmanPlugin::Message(const std::string& text) {
@@ -59,6 +92,12 @@ std::string CAmanPlugin::CurrentJson() {
 }
 
 void CAmanPlugin::OnTimer(int counter) {
+    std::deque<std::string> msgs;
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        msgs.swap(pending_);
+    }
+    for (const std::string& m : msgs) Message(m);
     if (counter % 5 == 0) BuildSnapshot();
 }
 
@@ -72,8 +111,15 @@ void CAmanPlugin::OnNewMetarReceived(const char* station, const char* fullMetar)
 bool CAmanPlugin::OnCompileCommand(const char* command) {
     std::string c = upper(command);
     if (c.rfind(".AMAN", 0) != 0) return false;
+    if (c.find("UPDATE") != std::string::npos) {
+        Message("AMAN: checking for updates ...");
+        StartUpdateCheck(true);
+        return true;
+    }
 #ifdef _WIN32
-    ShellExecuteA(nullptr, "open", "http://127.0.0.1:8471/", nullptr, nullptr, SW_SHOWNORMAL);
+    // eigenes App-Fenster ohne Adressleiste (Edge ist auf jedem Windows vorhanden), sonst Standardbrowser
+    HINSTANCE r = ShellExecuteA(nullptr, "open", "msedge", "--app=http://127.0.0.1:8471/ --window-size=960,1040", nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(r) <= 32) ShellExecuteA(nullptr, "open", "http://127.0.0.1:8471/", nullptr, nullptr, SW_SHOWNORMAL);
 #endif
     Message(server_ && server_->running() ? "AMAN: http://127.0.0.1:8471/" : "AMAN server not running (port 8471 in use?)");
     return true;
@@ -142,5 +188,6 @@ void CAmanPlugin::BuildSnapshot() {
 
     std::lock_guard<std::mutex> lock(mtx_);
     s.metar = metar_;
+    s.pluginVersion = AMAN_VERSION;
     json_ = s.toJson();
 }

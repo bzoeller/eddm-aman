@@ -352,8 +352,57 @@
         const t = h.d / gs * 3600 + ttgAt(ttg, h.s);
         if (!best || t < best.t) best = { t, rem: h.d + effRemaining(cfg, path, h.s), s: h.s };
       }
+      const fin = finalIntercept(ac, a, path, ttg, p);
+      if (fin && (!best || fin.t < best.t)) best = fin;
       if (!best || best.t > tVia - 60) return null;                              // spart weniger als 1 min: weiter via IAF
       return best;
+    }
+
+    /** Geometrie der Anfluglinie eines Pfades: Schwelle, Einheitsvektor nach aussen, Inbound-Kurs. */
+    function finalGeo(path) {
+      const fi = path.pts.findIndex(q => q.name === 'FAP15');
+      if (fi < 0) return null;
+      const thr = path.pts[path.pts.length - 1], fap = path.pts[fi];
+      const L = dist(thr, fap) || 1;
+      return { thr, ox: (fap.x - thr.x) / L, oy: (fap.y - thr.y) / L, inbound: trackDeg(fap, thr) };
+    }
+    /** Flugzeit vom Punkt r NM vor der Schwelle (auf der Anfluglinie) bis zur Schwelle. */
+    function finalTime(path, ttg, r) {
+      const F = cfg.profile.finalNm;
+      if (r <= F) return ttgAt(ttg, Math.max(0, path.length - r));
+      return ttgAt(ttg, path.length - F) + (r - F) / tasFromIas(cfg.profile.fap, Math.min(10000, cfg.elevationFt + r * 318)) * 3600;
+    }
+    /** Fliegt der Flieger auf der (verlaengerten) Anfluglinie in Landerichtung? Liefert r (NM bis Schwelle) oder null. */
+    function onFinalOf(path, p, ac, a) {
+      const G = finalGeo(path);
+      if (!G || !finalAllowed(ac)) return null;
+      const along = (p.x - G.thr.x) * G.ox + (p.y - G.thr.y) * G.oy;
+      const lat = Math.abs((p.x - G.thr.x) * G.oy - (p.y - G.thr.y) * G.ox);
+      if (along < 0.5 || along > 30 || lat > 1.5) return null;
+      if (a.trk != null && Math.abs(((a.trk - G.inbound) % 360 + 540) % 360 - 180) > 35) return null;
+      return along;
+    }
+
+    /**
+     * Kurs schneidet die Anfluglinie der Bahn (Final ab FAP15 und deren Verlaengerung bis 30 NM):
+     * direkt aufs Final per Heading. Liefert { t, rem } oder null.
+     */
+    function finalIntercept(ac, a, path, ttg, p) {
+      if (a.trk == null || ac.inHold) return null;
+      const G = finalGeo(path);
+      if (!G) return null;
+      const thr = G.thr, ox = G.ox, oy = G.oy, inbound = G.inbound;
+      if (Math.abs(((a.trk - inbound) % 360 + 540) % 360 - 180) > 100) return null;     // fliegt nicht in Landerichtung ein
+      const ux = Math.sin(a.trk * Math.PI / 180), uy = Math.cos(a.trk * Math.PI / 180);
+      const ex = ox * 30, ey = oy * 30, den = ux * ey - uy * ex;
+      if (Math.abs(den) < 1e-6) return null;
+      const wx = thr.x - p.x, wy = thr.y - p.y;
+      const u = (wx * ey - wy * ex) / den, f = (wx * uy - wy * ux) / den;
+      // eingefangen wird das Final erst ab etwa 8 NM; naeher an der Schwelle ist es ein Queren (z. B. zum anderen Downwind)
+      if (u < 0.3 || u > 40 || f * 30 < (cfg.defaults.finalInterceptMinNm || 8) || f > 1) return null;
+      const r = f * 30, F = cfg.profile.finalNm, gs = ac.gs > 60 ? ac.gs : 220;
+      const tFin = finalTime(path, ttg, r);
+      return { t: u / gs * 3600 + tFin, rem: u + r, s: path.length - Math.min(r, F) };
     }
 
     /** Ist der Flieger tief genug, um auf dem Final zu sein (Standard 7000 ft oder darunter)? */
@@ -389,15 +438,22 @@
         const extra = pr.cross > 1 ? pr.cross : 0;
         const gs = ac.gs > 60 ? ac.gs : 200;
         let t = ttgAt(ttg, pr.s) + extra / gs * 3600, rem = along + extra, cut = false;
+        // auf der Anfluglinie (auch vor FAP15, z. B. nach Heading direkt aufs verlaengerte Final)
+        const rF = onFinalOf(path, p, ac, a);
+        if (rF != null) { const tF = finalTime(path, ttg, rF); if (tF < t + 30 || rF > cfg.profile.finalNm) { t = tF; rem = rF; } }
         // Abkuerzung: Kurs schneidet den Pfad weiter vorn (z. B. frueh auf den Base oder direkt aufs Final)
         const trk = a.trk;
         // nicht im Holding und nicht direkt am IAF (dort zeigt der Kurs oft zufaellig auf den Pfad)
-        if (trk != null && !ac.inHold && (pr.s > 3 || a.vectored)) {
+        if (trk != null && !ac.inHold) {
+          // direkt am IAF zeigt der Kurs beim Eindrehen oft zufaellig auf den Pfad: dort nur, wenn es >= 1 min spart
+          const minGain = pr.s > 3 || a.vectored ? 0 : 60;
           for (const hit of rayHits(path, p, trk, pr.s + 1, 30)) {
             if (hit.s - pr.s <= hit.d + cfg.defaults.shortcutMinNm) continue;
             const tHit = hit.d / gs * 3600 + ttgAt(ttg, hit.s);
-            if (tHit < t) { t = tHit; rem = hit.d + effRemaining(cfg, path, hit.s); cut = true; }
+            if (tHit < t - minGain) { t = tHit; rem = hit.d + effRemaining(cfg, path, hit.s); cut = true; }
           }
+          const fin = finalIntercept(ac, a, path, ttg, p);
+          if (fin && fin.t < t - Math.max(30, minGain)) { t = fin.t; rem = fin.rem; cut = true; }
         }
         return { eta: now + t, etaIaf: null, remainingNm: rem, passedIaf: true, sNew: pr.s, tIafToThr: ttg[0], shortcut: cut, tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) };
       }
@@ -431,6 +487,13 @@
       const P = D.path, p = proj.xy(ac.lat, ac.lon);
       const ttg = timeTable(cfg, P, vappFor(cfg, ac), winds);
       const gs = ac.gs > 60 ? ac.gs : 200;
+      // schon auf dem Final der neuen Bahn: nur noch die Entfernung zur Schwelle
+      const rF = onFinalOf(P, p, ac, a);
+      if (rF != null) {
+        a.xOn = true;
+        return { eta: now + finalTime(P, ttg, rF), etaIaf: null, remainingNm: rF, passedIaf: true, sNew: a.sMin || 0, tIafToThr: ttg[0],
+          tFinal: ttgAt(ttg, Math.max(0, P.length - cfg.profile.finalNm)), xfer: false, viaDownwind: D.iaf };
+      }
       const minS = Math.max(D.sDw, a.xMin || 0);
       // Eintritt nur auf dem Downwind (bis ABEAM), nicht auf Base oder Final
       const prDw = project(P, p, minS, D.sAb);
@@ -454,6 +517,9 @@
         t = d / gs * 3600 + ttgAt(ttg, sJoin);
         rem = d + effRemaining(cfg, P, sJoin);
       }
+      // direkt auf das (verlaengerte) Final dieser Bahn statt ueber den Downwind
+      const fin = finalIntercept(ac, a, P, ttg, p);
+      if (fin && fin.t < t - 30) { t = fin.t; rem = fin.rem; onDw = true; }
       return { eta: now + t, etaIaf: null, remainingNm: rem, passedIaf: true, sNew: a.sMin || 0, tIafToThr: ttg[0],
         tFinal: ttgAt(ttg, Math.max(0, P.length - cfg.profile.finalNm)), xfer: !onDw, viaDownwind: D.iaf };
     }
@@ -470,6 +536,14 @@
       if (st.dir !== '26' && st.dir !== '08') st.dir = '26';
       const dir = st.dir;
       const ch = st.dirChange && st.dirChange.to !== dir ? st.dirChange : null;
+      // Vergibt EuroScope gerade beide Bahnen der aktiven Richtung, sind die Bahnen im Tag von Lotsen gesetzt:
+      // dann gilt die Bahn eines Fliegers schon beim ersten Sehen (z. B. nach dem Neuladen des AMAN)
+      const esSides = {};
+      for (const x of (traffic && traffic.aircraft) || []) {
+        const r0 = x && x.arrRwy ? String(x.arrRwy).toUpperCase() : null;
+        if (r0 && dirOfRwy(r0) === dir) esSides[sideOfRwy(r0)] = true;
+      }
+      const esMixed = !!(esSides.N && esSides.S);
       const seen = {};
       const items = [];
 
@@ -525,7 +599,8 @@
         if (esR) {
           // Nur ein Seitenwechsel in gleicher Richtung zaehlt (08R -> 08L). Traegt EuroScope nach dem
           // Drehen der Bahn automatisch eine neue Richtung ein (26L -> 08L), passiert nichts.
-          if (a.esRwy && esR !== a.esRwy && dirOfRwy(esR) && dirOfRwy(esR) === dirOfRwy(a.esRwy)) {
+          const firstSeen = !a.esRwy && esMixed && dirOfRwy(esR) === dir;
+          if (firstSeen || (a.esRwy && esR !== a.esRwy && dirOfRwy(esR) && dirOfRwy(esR) === dirOfRwy(a.esRwy))) {
             const sES = sideOfRwy(esR);
             a.esByCtl = true;
             if (sES && sES !== (a.rwySide || cfg.iafs[iaf].side)) {

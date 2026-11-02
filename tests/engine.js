@@ -128,5 +128,19 @@ for (const D of ['26', '08']) {
   ok(!n.it.passedIaf && n.it.remainingNm > 55, 'normal Richtung BETOS: weiter ueber die Transition (' + n.it.remainingNm.toFixed(0) + ' NM)');
 }
 
+// 7) Heading auf die verlaengerte Anfluglinie (vor FAP15), Fall EZY42SB, RWY 08: Lotse hat 08L im Tag,
+//    andere Flieger haben 08R (gemischt) -> 08L schon beim ersten Sehen, Restweg direkt statt ueber BETOS
+{
+  const e = Core.createEngine(cfg, { dir: '08' }), P = e.proj;
+  const mk = (cs, x, y, trk, alt, gs, star, rwy) => Object.assign({ cs, type: 'A320', wtc: 'M', alt, gs, trk, hdg: trk, star, route: star.slice(0, 5), arrRwy: rwy }, P.ll(x, y));
+  let L;
+  for (let k = 0; k <= 6; k++) {
+    const r = 20 * Math.PI / 180, d = 220 * 5 * k / 3600;
+    L = e.update({ aircraft: [mk('EZY42SB', -22.6 + Math.sin(r) * d, -11.7 + Math.cos(r) * d, 20, 7000, 220, 'BETOS1A', '08L'), mk('AFR5068', 2, -20, 340, 15000, 280, 'NAPSA1A', '08R')] }, T0 + 5 * k, {});
+  }
+  const it = L.byCs.EZY42SB;
+  ok(it.rwy === '08L' && it.remainingNm < 32, 'Heading auf verlaengerte Anfluglinie 08L: ' + it.rwy + ', ' + it.remainingNm.toFixed(0) + ' NM (vorher 61 ueber BETOS)');
+}
+
 console.log(fails ? fails + ' Fehler' : 'alles gruen');
 process.exit(fails ? 1 : 0);

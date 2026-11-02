@@ -7,6 +7,16 @@ Das Plugin liest alle 5 Sekunden den Anflugverkehr nach EDDM aus EuroScope und s
 
 Pro Flieger liefert es Callsign, Typ, WTC, Position, Höhe, Groundspeed, Kurs, Route, STAR, die Landebahn aus dem Flugplan bzw. Tag (`arrRwy`), den IAF und, wenn EuroScope den IAF schon als überflogen führt, `passedIaf`. Dazu kommen dein Callsign, die eingeloggten Lotsen, die aktiven Landebahnen von EDDM (nur für die MISMATCH-Warnung) und das METAR von EDDM.
 
+## Secrets für den automatischen Release (einmalig, für Betreuer)
+
+GitHub baut die Releases unter Windows und braucht dafür die beiden SDK-Dateien, ohne dass sie öffentlich ins Repo kommen. In der PowerShell im Ordner mit den Dateien:
+
+```
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$PWD\EuroScopePlugIn.h")) | Set-Clipboard
+```
+
+Dann auf GitHub unter **Settings → Secrets and variables → Actions → New repository secret** den Namen `ES_SDK_H` eintragen und den Inhalt einfügen. Dasselbe mit `EuroScopePlugInDll.lib` als `ES_SDK_LIB`.
+
 ## Bauen (einmalig, unter Windows)
 
 Du brauchst:
@@ -40,7 +50,7 @@ Hinweis: Den Plugin-Code habe ich unter Linux gegen einen Nachbau der EuroScope-
 
 1. Kopiere `EDDM-AMAN.dll` und den Ordner `web` zusammen an einen festen Ort, z. B. `Dokumente\EuroScope\Plugins\EDDM-AMAN\`.
 2. In EuroScope: **OTHER SET → Plug-ins… → Load** und `EDDM-AMAN.dll` auswählen. In der Nachrichtenzeile erscheint „AMAN running: http://127.0.0.1:8471/“.
-3. AMAN öffnen: in der EuroScope-Befehlszeile `.aman` eingeben (öffnet den Browser) oder im Browser `http://127.0.0.1:8471/` aufrufen. Am besten als halbes Fenster auf dem Zweitschirm.
+3. AMAN öffnen: in der EuroScope-Befehlszeile `.aman` eingeben. Das öffnet ein eigenes Fenster (Edge im App-Modus, ohne Adressleiste). Alternativ im Browser `http://127.0.0.1:8471/` aufrufen. Am besten als halbes Fenster auf dem Zweitschirm.
 4. Damit das Plugin beim nächsten Start automatisch geladen wird, im Plug-ins-Dialog das Profil speichern (wie bei anderen Plugins).
 
 Meldet EuroScope „AMAN could not start: port 8471 is in use“, läuft schon ein anderes Programm (oder ein zweites EuroScope) auf diesem Port.

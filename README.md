@@ -1,5 +1,21 @@
 # EDDM AMAN
 
+Arrival manager for Munich (EDDM) on VATSIM: a EuroScope plug-in plus a display in its own window. For VATSIM and simulation only.
+
+## Installieren (für Lotsen)
+
+1. Unter [Releases](https://github.com/bzoeller/eddm-aman/releases/latest) die Datei **EDDM-AMAN-Setup.exe** laden und starten. Sie braucht keine Admin-Rechte und installiert nach `Dokumente\EuroScope\Plugins\EDDM-AMAN`.
+2. Einmalig in EuroScope: **OTHER SET → Plug-ins… → Load** und `EDDM-AMAN.dll` aus diesem Ordner wählen. Beim Beenden die Einstellungen speichern, dann lädt EuroScope das Plugin künftig selbst.
+3. In der EuroScope-Befehlszeile **`.aman`** eingeben: Der AMAN öffnet sich in einem eigenen Fenster. Am besten auf den Zweitschirm, halbe Breite.
+
+**Updates** kommen automatisch: Beim Start von EuroScope prüft das Plugin, ob es eine neue Version gibt. Die Webseite ist sofort neu (im AMAN-Fenster F5), das Plugin selbst nach dem nächsten EuroScope-Start. Von Hand prüfen: `.aman update`.
+
+## Neue Version veröffentlichen (für Betreuer)
+
+Einmalig: In den Repository-Einstellungen unter **Settings → Secrets and variables → Actions** zwei Secrets anlegen, `ES_SDK_H` und `ES_SDK_LIB`, mit dem Base64-Inhalt von `EuroScopePlugIn.h` und `EuroScopePlugInDll.lib` (siehe `plugin/README.md`). Die SDK-Dateien selbst kommen nie ins Repo.
+
+Jede Version: Nummer in `VERSION` erhöhen, committen, Tag `v<Nummer>` pushen. GitHub baut unter Windows DLL und Installer, berechnet die Prüfsummen und veröffentlicht das Release. Danach holen sich alle Plugins die neue Version beim nächsten EuroScope-Start.
+
 Arrival Manager für München (EDDM) als Browser-Anzeige im Look des AMAN-Schirms am Arbeitsplatz: Zeitstrahl für Nord- und Südbahn, Hold-Feld, Bahnsperren, Statistik und eigene Ansichten für die CTR-Sektoren. Die Anzeige rechnet und zeichnet alle 5 Sekunden neu (`refreshSec` in `eddm.json`).
 
 ## Starten

@@ -15,10 +15,16 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
   message(FATAL_ERROR "EuroScope-Plugins muessen 32 Bit sein: mit -A Win32 konfigurieren.")
 endif()
 
-add_library(EDDM-AMAN SHARED src/AmanPlugin.cpp src/HttpServer.cpp src/PluginMain.cpp)
+# Version aus der Datei VERSION im Repo (oder -DAMAN_VERSION=... beim Release)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" AMAN_VERSION_FILE)
+string(STRIP "${AMAN_VERSION_FILE}" AMAN_VERSION_FILE)
+set(AMAN_VERSION "${AMAN_VERSION_FILE}" CACHE STRING "Versionsnummer des Plugins")
+set(AMAN_UPDATE_BASE "https://github.com/bzoeller/eddm-aman/releases" CACHE STRING "Update-Quelle (GitHub-Releases)")
+
+add_library(EDDM-AMAN SHARED src/AmanPlugin.cpp src/HttpServer.cpp src/PluginMain.cpp src/Updater.cpp)
 target_include_directories(EDDM-AMAN PRIVATE src "${ES_SDK_DIR}")
-target_link_libraries(EDDM-AMAN PRIVATE "${ES_SDK_DIR}/EuroScopePlugInDll.lib" ws2_32 shell32)
-target_compile_definitions(EDDM-AMAN PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+target_link_libraries(EDDM-AMAN PRIVATE "${ES_SDK_DIR}/EuroScopePlugInDll.lib" ws2_32 shell32 winhttp)
+target_compile_definitions(EDDM-AMAN PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX AMAN_VERSION="${AMAN_VERSION}" AMAN_UPDATE_BASE="${AMAN_UPDATE_BASE}")
 # Laufzeit statisch einbinden, damit kein zusaetzliches Visual-C++-Paket noetig ist
 set_property(TARGET EDDM-AMAN PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 

@@ -35,10 +35,10 @@ static void load(const std::string& file) {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 3) { std::fprintf(stderr, "Aufruf: harness <web-ordner> <verkehrsdatei>\n"); return 2; }
+    if (argc < 3) { std::fprintf(stderr, "Aufruf: harness <plugin-ordner mit web/> <verkehrsdatei>\n"); return 2; }
     std::signal(SIGTERM, [](int) { g_run = false; });
     std::signal(SIGINT, [](int) { g_run = false; });
-    CAmanPlugin* p = new CAmanPlugin(argv[1]);
+    CAmanPlugin* p = new CAmanPlugin(argv[1], "EDDM-AMAN.dll");
     p->OnNewMetarReceived("EDDM", "EDDM 021050Z 25012KT 9999 FEW030 08/02 Q1018 NOSIG");
     p->OnCompileCommand(".aman");
     for (int counter = 0; g_run; counter++) {

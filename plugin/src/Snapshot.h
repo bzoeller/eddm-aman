@@ -18,6 +18,7 @@ struct Snapshot {
     double time = 0;                       // UTC-Sekunden seit 1970, Zeitpunkt der Daten
     std::string myCallsign, myFacility;
     std::string metar;
+    std::string pluginVersion;
     std::vector<std::string> arrRwys;      // aktive Landebahnen in EuroScope (nur zum Vergleich)
     std::vector<std::string> controllers;  // eingeloggte Lotsen
     std::vector<Aircraft> aircraft;
@@ -25,7 +26,7 @@ struct Snapshot {
     std::string toJson() const {
         std::string o = "{\"version\":1,\"time\":" + jsonNum(time, 1);
         o += ",\"me\":{\"callsign\":" + jsonStr(myCallsign) + ",\"facility\":" + jsonStr(myFacility) + "}";
-        o += ",\"metar\":" + jsonStr(metar);
+        o += ",\"metar\":" + jsonStr(metar) + ",\"pluginVersion\":" + jsonStr(pluginVersion);
         o += ",\"arrRwys\":[";
         for (size_t i = 0; i < arrRwys.size(); i++) o += (i ? "," : "") + jsonStr(arrRwys[i]);
         o += "],\"controllers\":[";

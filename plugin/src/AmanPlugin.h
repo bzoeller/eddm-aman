@@ -2,9 +2,12 @@
 // Liest alle 5 s den Anflugverkehr nach EDDM aus EuroScope und stellt ihn unter
 // http://127.0.0.1:8471/api/traffic bereit; unter http://127.0.0.1:8471/ laeuft die AMAN-Seite.
 #pragma once
+#include <atomic>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
@@ -16,7 +19,8 @@
 
 class CAmanPlugin : public EuroScopePlugIn::CPlugIn {
 public:
-    explicit CAmanPlugin(const std::string& webRoot);
+    /** pluginDir: Ordner der DLL (darin "web"), dllName: Dateiname der DLL (fuer das Update). */
+    CAmanPlugin(const std::string& pluginDir, const std::string& dllName);
     ~CAmanPlugin() override;
 
     void OnTimer(int counter) override;
@@ -31,6 +35,12 @@ public:
 
 private:
     void Message(const std::string& text);
+    void StartUpdateCheck(bool manual);
+    void QueueMessage(const std::string& text);
+    std::string pluginDir_, dllName_;
+    std::thread updateThread_;
+    std::atomic<bool> updating_{false};
+    std::deque<std::string> pending_;   // Meldungen aus dem Update-Thread, angezeigt im EuroScope-Thread
     std::unique_ptr<aman::HttpServer> server_;
     std::mutex mtx_;
     std::string json_;

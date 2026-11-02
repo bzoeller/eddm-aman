@@ -1,0 +1,63 @@
+# Release: bei einem Tag v1.2.3 unter Windows bauen und als GitHub-Release veroeffentlichen.
+# Braucht die Repository-Secrets ES_SDK_H und ES_SDK_LIB (Base64 von EuroScopePlugIn.h und EuroScopePlugInDll.lib).
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag, z. B. v1.0.0'
+        required: true
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-2022
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: EuroScope-SDK aus den Secrets
+        shell: pwsh
+        env:
+          ES_SDK_H: ${{ secrets.ES_SDK_H }}
+          ES_SDK_LIB: ${{ secrets.ES_SDK_LIB }}
+        run: |
+          if (-not $env:ES_SDK_H -or -not $env:ES_SDK_LIB) { throw "Secrets ES_SDK_H und ES_SDK_LIB fehlen (siehe plugin/README.md)" }
+          New-Item -ItemType Directory -Force plugin/sdk | Out-Null
+          [IO.File]::WriteAllBytes("plugin/sdk/EuroScopePlugIn.h", [Convert]::FromBase64String($env:ES_SDK_H))
+          [IO.File]::WriteAllBytes("plugin/sdk/EuroScopePlugInDll.lib", [Convert]::FromBase64String($env:ES_SDK_LIB))
+      - name: Version pruefen
+        shell: pwsh
+        run: |
+          $v = $env:TAG.TrimStart('v')
+          $f = (Get-Content VERSION -Raw).Trim()
+          if ($v -ne $f) { throw "Tag $env:TAG passt nicht zu VERSION ($f)" }
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Bauen (32 Bit)
+        run: |
+          cmake -S plugin -B build -A Win32 -DAMAN_VERSION=${{ env.VERSION }}
+          cmake --build build --config Release
+      - name: Dateien, Pruefsummen und Installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/web | Out-Null
+          Copy-Item build/Release/EDDM-AMAN.dll dist/
+          $web = 'index.html','app.js','aman-core.js','aman-sim.js','eddm.json','style.css'
+          foreach ($f in $web) { Copy-Item $f dist/web/ }
+          $lines = @("version $env:VERSION")
+          $lines += "dll EDDM-AMAN.dll " + (Get-FileHash dist/EDDM-AMAN.dll -Algorithm SHA256).Hash.ToLower()
+          foreach ($f in $web) { $lines += "web $f " + (Get-FileHash "dist/web/$f" -Algorithm SHA256).Hash.ToLower() }
+          $lines -join "`n" | Out-File -Encoding ascii -NoNewline dist/manifest.txt
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          & $iscc "/DAppVersion=$env:VERSION" "/DDist=$PWD\dist" installer\EDDM-AMAN.iss
+          if ($LASTEXITCODE -ne 0) { throw "Installer fehlgeschlagen" }
+      - name: GitHub-Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = @('dist/EDDM-AMAN-Setup.exe', 'dist/EDDM-AMAN.dll', 'dist/manifest.txt') + (Get-ChildItem dist/web -File | ForEach-Object { $_.FullName })
+          gh release create $env:TAG $files --title "EDDM AMAN $env:VERSION" --generate-notes
