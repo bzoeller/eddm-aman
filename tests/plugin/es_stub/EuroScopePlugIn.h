@@ -15,7 +15,7 @@ const int COMPATIBILITY_CODE = 16;
 const int SECTOR_ELEMENT_RUNWAY = 4;
 
 struct FakeTarget {
-    std::string cs, type, dest = "EDDM", route, star, arrRwy;
+    std::string cs, type, dest = "EDDM", route, star, arrRwy, trackedBy;
     char wtc = 'M';
     double lat = 0, lon = 0, trk = 0;
     int alt = 0, gs = 0, hdg = 0;
@@ -69,6 +69,7 @@ public:
     bool IsValid() { return t_ != nullptr; }
     CFlightPlanData GetFlightPlanData() { return CFlightPlanData(t_); }
     CFlightPlanExtractedRoute GetExtractedRoute() { return CFlightPlanExtractedRoute(); }
+    const char* GetTrackingControllerCallsign() { return t_->trackedBy.c_str(); }
 };
 
 class CRadarTarget {

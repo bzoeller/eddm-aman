@@ -677,6 +677,7 @@
           dir: acDir, rwy: rwyId(side, acDir), tFinal: r.tFinal, eta: r.eta, etaIaf: r.etaIaf, tIafToThr: r.tIafToThr,
           remainingNm: r.remainingNm, passedIaf: r.passedIaf, hold: !!a.hold,
           locked: !!a.locked, manualRwy: !!a.rwySide, shortcut: !!r.shortcut,
+          trackedBy: typeof ac.trackedBy === 'string' && ac.trackedBy ? ac.trackedBy.toUpperCase() : null,
           xfer: !!r.xfer, viaDownwind: r.viaDownwind || null, esRwy: a.esRwy || null
         });
       }

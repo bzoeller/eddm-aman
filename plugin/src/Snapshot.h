@@ -7,7 +7,7 @@
 namespace aman {
 
 struct Aircraft {
-    std::string cs, type, route, star, arrRwy, iaf;
+    std::string cs, type, route, star, arrRwy, iaf, trackedBy;
     char wtc = 'M';
     double lat = NAN, lon = NAN, trk = NAN, hdg = NAN;
     int alt = 0, gs = 0;
@@ -41,6 +41,7 @@ struct Snapshot {
             o += ",\"trk\":" + jsonNum(a.trk, 0) + ",\"hdg\":" + jsonNum(a.hdg, 0);
             o += ",\"route\":" + jsonStr(a.route) + ",\"star\":" + jsonStr(a.star) + ",\"arrRwy\":" + jsonStr(a.arrRwy);
             if (!a.iaf.empty()) o += ",\"iaf\":" + jsonStr(a.iaf);
+            if (!a.trackedBy.empty()) o += ",\"trackedBy\":" + jsonStr(a.trackedBy);
             if (a.passedIaf >= 0) o += std::string(",\"passedIaf\":") + (a.passedIaf ? "true" : "false");
             o += "}";
         }

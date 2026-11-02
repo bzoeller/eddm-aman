@@ -37,7 +37,9 @@ Die Oberfläche ist englisch, diese Anleitung deutsch.
 
 ## CTR-Ansichten und Ströme
 
-Die Ansicht wird beim Öffnen immer automatisch nach dem Login gewählt (siehe Tabelle). Eine Auswahl von Hand (MENU oder unten rechts) gilt, bis die Seite neu geladen wird. In der CTR-Ansicht steht jedes Label auf der geplanten Überflugzeit am IAF, die Balken zeigen die Minuten, die bis dorthin verloren werden müssen.
+**Sektorvergabe automatisch:** Ein CTR-Lotse sieht jeden Strom, in dem er gerade mindestens einen Flieger vor dem IAF trackt. Die Daten dazu (wer trackt) kommen aus EuroScope. Damit folgt die Ansicht jeder Sektorkombination von selbst, ohne Tabelle: Arbeitet z. B. ALB auch RDG und trackt die LANDU-Flieger, heißt die Ansicht „CTR ALB (LULAR NIRGO VESUB)“. Übernimmt ZUG alles, sieht ZUG alle Ströme. Ein Strom bleibt nach dem letzten getrackten Flieger noch 10 Minuten in der Ansicht. Trackt ein CTR-Lotse noch nichts, gilt die feste Zuordnung aus der Tabelle unten.
+
+Die Ansicht wird beim Öffnen immer automatisch nach dem Login gewählt. Eine Auswahl von Hand (MENU oder unten rechts) gilt, bis die Seite neu geladen wird. In der CTR-Ansicht steht jedes Label auf der geplanten Überflugzeit am IAF, die Balken zeigen die Minuten, die bis dorthin verloren werden müssen.
 
 | Ansicht | Callsign | zeigt |
 |---|---|---|

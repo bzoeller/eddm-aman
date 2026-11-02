@@ -53,6 +53,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await p.reload(); await wait(6500);
   // FUE ist im Testaufbau nicht eingeloggt: STA arbeitet beide BETOS-Stroeme (combined)
   ok(/combined/.test(await p.textContent('#frameTitle')), 'EDMM_STA_CTR ohne FUE online: Ansicht automatisch ' + (await p.textContent('#frameTitle')));
+  // ALB arbeitet RDG mit: ALB trackt die LANDU-Fluege -> ALB bekommt automatisch die LANDU-Stroeme
+  cmd('TRACK LANDU EDMM_ALB_CTR'); cmd('ME EDMM_ALB_CTR');
+  await wait(7000);
+  const t1 = await p.textContent('#frameTitle'), cols = await p.$$eval('.col.C .label', l => l.length);
+  ok(/CTR ALB/.test(t1) && /LULAR|NIRGO|VESUB/.test(t1) && cols > 0, 'ALB trackt LANDU-Verkehr: Ansicht ' + t1 + ', ' + cols + ' Labels');
+  const lab = await p.$$eval('.col.C .label', l => l.map(x => x.getAttribute('aria-label')));
+  ok(lab.every(x => / via (LULAR|NIRGO|VESUB)/.test(x)), 'nur LANDU-Stroeme in der Ansicht');
   cmd('ME EDDM_N_APP');
   await wait(6500);
   ok(/AMAN EDDM APP/.test(await p.textContent('#frameTitle')), 'Login wechselt zu EDDM_N_APP: Ansicht folgt ' + (await p.textContent('#frameTitle')));

@@ -183,12 +183,32 @@
     if (settings.view !== 'auto') return settings.view;
     if (simApi) return 'APP';
     const r = role();
-    if (r === 'CTR') return AmanCore.ctrSector(cfg, me && me.callsign, online) || 'APP';
+    if (r === 'CTR') return dynView() ? 'DYN' : (AmanCore.ctrSector(cfg, me && me.callsign, online) || 'APP');
     return r === 'OBS' ? 'TWR' : r;
   }
-  const ctrView = v => (cfg.ctrViews || []).find(x => x.id === v) || null;
+  /**
+   * CTR-Ansicht nach Sektorvergabe: ein CTR-Lotse sieht jeden Strom, in dem er mindestens einen Flieger vor dem
+   * IAF trackt (Daten aus EuroScope). So folgt die Ansicht automatisch jeder Sektorkombination (z. B. ALB arbeitet
+   * RDG). Ein Strom bleibt nach dem letzten getrackten Flieger noch 10 min in der Ansicht.
+   */
+  const myStreams = {};   // Schluessel "IAF:Strom" -> zuletzt getrackt (Datenzeit)
+  function dynView() {
+    const cs = me && me.callsign ? String(me.callsign).toUpperCase() : null;
+    if (!cs || simApi || !engine.last.list) return null;
+    const now = engine.last.now;
+    for (const i of engine.last.list) if (i.trackedBy === cs && !i.passedIaf) myStreams[i.iaf + ':' + (i.stream || '')] = now;
+    const keys = Object.keys(myStreams).filter(k => now - myStreams[k] < 600);
+    if (!keys.length) return null;
+    const parts = keys.sort().map(k => { const [iaf, stream] = k.split(':'); return { iaf, stream: stream || null }; });
+    const m = /^(?:EDMM_|LOVV_)([A-Z0-9]+)_CTR$/.exec(cs);
+    const names = parts.map(p => p.stream || p.iaf).join(' ');
+    return { id: 'DYN', label: 'CTR ' + (m ? m[1] : cs) + ' (' + names + ')', parts };
+  }
+  const ctrView = v => v === 'DYN' ? dynView() : ((cfg.ctrViews || []).find(x => x.id === v) || null);
   const isCtrView = v => !!ctrView(v);
-  const showsItem = (view, i) => i.iaf === view.iaf && (!view.streams || view.streams.indexOf(i.stream) >= 0);
+  const showsItem = (view, i) => view.parts
+    ? view.parts.some(pt => i.iaf === pt.iaf && (!pt.stream || i.stream === pt.stream))
+    : i.iaf === view.iaf && (!view.streams || view.streams.indexOf(i.stream) >= 0);
   const canEdit = () => viewKey() === 'APP' && (simApi || role() === 'APP');
 
   // ---------- Zeichnen ----------
@@ -457,6 +477,7 @@
       drawColumn(c, items, 'ctr', view);
       c.tag.classList.toggle('on', st.staticMode); c.tag.textContent = st.staticMode ? 'static' : 'dynamic'; c.tag.disabled = true;
       $('frameTitle').textContent = view.label;
+      const nm = c.el.querySelector('.col-name'); if (nm && nm.textContent !== view.label) nm.textContent = view.label;
     } else {
       $('frameTitle').textContent = 'AMAN EDDM ' + v;
       for (const side of ['N', 'S']) {

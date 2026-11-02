@@ -169,6 +169,8 @@ void CAmanPlugin::BuildSnapshot() {
         a.route = fd.GetRoute() ? fd.GetRoute() : "";
         a.star = upper(fd.GetStarName());
         a.arrRwy = upper(fd.GetArrivalRwy());   // Landebahn im Flugplan bzw. Tag, aendert der Lotse sie, zieht der AMAN mit
+        // wer den Flieger gerade getrackt hat: daraus ermittelt der AMAN, welcher CTR-Sektor welchen Strom arbeitet
+        a.trackedBy = upper(fp.GetTrackingControllerCallsign());
 
         // IAF aus der berechneten Route; "passiert" nur melden, wenn EuroScope den Punkt als ueberflogen fuehrt
         CFlightPlanExtractedRoute er = fp.GetExtractedRoute();

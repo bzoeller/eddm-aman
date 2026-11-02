@@ -29,6 +29,7 @@ static void load(const std::string& file) {
         t.cs = c[0]; t.type = c[1]; t.wtc = c[2].empty() ? 'M' : c[2][0];
         t.lat = std::stod(c[3]); t.lon = std::stod(c[4]); t.alt = std::stoi(c[5]); t.gs = std::stoi(c[6]);
         t.trk = std::stod(c[7]); t.hdg = static_cast<int>(t.trk); t.route = c[8]; t.star = c[9]; t.arrRwy = c[10]; t.dest = c[11];
+        if (c.size() > 12) t.trackedBy = c[12];
         v.push_back(t);
     }
     world().targets = v;
