@@ -12,7 +12,8 @@
     simRate: 60, simSpeed: 5, simWind: '250/10'
   };
   let traffic = { aircraft: [] }, me = null, metar = null, aloft = null, lastData = 0, connErr = null;
-  let curView = null, colEls = {}, drag = null, timer = null;
+  let curView = null, colEls = {}, drag = null, timer = null, lastTick = 0, online = null;
+  const refreshMs = () => 1000 * ((cfg && cfg.defaults.refreshSec) || 5);
 
   // ---------- Speicher ----------
   function load() {
@@ -35,6 +36,9 @@
     if (!isPluginHost && settings.source === 'plugin') settings.source = 'sim';
     engine = AmanCore.createEngine(cfg, saved && saved.engine ? Object.assign({}, saved.engine, { closures: (saved.engine.closures || []).filter(c => c.to > Date.now() / 1000) }) : null);
     applyTheme();
+    const sel = $('selView');
+    for (const v of cfg.ctrViews || []) { const o = document.createElement('option'); o.value = v.id; o.textContent = v.label; sel.appendChild(o); }
+    if (settings.view !== 'auto' && !['APP', 'TWR'].includes(settings.view) && !ctrView(settings.view)) settings.view = 'auto';
     bindUi();
     startSource();
   }).catch(err => {
@@ -42,8 +46,7 @@
   });
 
   function applyTheme() {
-    const r = document.documentElement;
-    if (settings.theme === 'system') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', settings.theme);
+    document.documentElement.setAttribute('data-theme', 'dark');
   }
 
   // ---------- Datenquellen ----------
@@ -63,7 +66,7 @@
     } else {
       simApi = null;
       pollPlugin();
-      timer = setInterval(pollPlugin, 1000);
+      timer = setInterval(pollPlugin, refreshMs());
       fetchAloft();
       setInterval(fetchAloft, 30 * 60 * 1000);
     }
@@ -74,12 +77,14 @@
     const dt = 0.25 * (+settings.simSpeed);
     simApi.sim.dir = engine.state.dir === 'auto' ? '26' : engine.state.dir;
     simApi.step(dt, engine.last);
-    tick();
+    // Die Simulation laeuft fluessig weiter, das AMAN rechnet und zeichnet nur alle 5 Sekunden
+    if (Date.now() - lastTick >= refreshMs()) tick();
   }
 
   function pollPlugin() {
     fetch('/api/traffic', { cache: 'no-store' }).then(r => r.json()).then(d => {
       me = d.me || null; metar = d.metar || null; lastData = Date.now(); connErr = null;
+      online = Array.isArray(d.controllers) ? d.controllers.map(c => (c && c.callsign) || c) : null;
       const rw = d.arrRwys || [];
       traffic = { aircraft: d.aircraft || [], activeDir: rw.some(r => /^08/.test(r)) ? '08' : (rw.some(r => /^26/.test(r)) ? '26' : null) };
       tick();
@@ -105,6 +110,7 @@
 
   function tick() {
     if (drag) return; // waehrend Drag & Drop nicht neu zeichnen
+    lastTick = Date.now();
     const tr = simApi ? simApi.traffic() : traffic;
     engine.update(tr, nowSec(), currentWinds());
     render();
@@ -120,10 +126,12 @@
     if (settings.view !== 'auto') return settings.view;
     if (simApi) return 'APP';
     const r = role();
-    if (r === 'CTR') return AmanCore.ctrSector(cfg, me && me.callsign) || 'APP';
+    if (r === 'CTR') return AmanCore.ctrSector(cfg, me && me.callsign, online) || 'APP';
     return r === 'OBS' ? 'TWR' : r;
   }
-  const isCtrView = v => !!cfg.iafs[v];
+  const ctrView = v => (cfg.ctrViews || []).find(x => x.id === v) || null;
+  const isCtrView = v => !!ctrView(v);
+  const showsItem = (view, i) => i.iaf === view.iaf && (!view.streams || view.streams.indexOf(i.stream) >= 0);
   const canEdit = () => viewKey() === 'APP' && (simApi || role() === 'APP');
 
   // ---------- Zeichnen ----------
@@ -133,14 +141,14 @@
     colEls = {};
     if (isCtrView(v)) {
       cols.className = 'cols ctr-view';
-      colEls.C = makeCol('C', 'CTR ' + cfg.iafs[v].sector + ' / ' + v);
+      colEls.C = makeCol('C', ctrView(v).label);
       cols.appendChild(colEls.C.el);
       colEls.scale = makeScale(); cols.appendChild(colEls.scale.el);
     } else {
       cols.className = 'cols app-view';
-      colEls.N = makeCol('N', 'NORD'); cols.appendChild(colEls.N.el);
+      colEls.N = makeCol('N', ''); cols.appendChild(colEls.N.el);
       colEls.scale = makeScale(); cols.appendChild(colEls.scale.el);
-      colEls.S = makeCol('S', 'SUED'); cols.appendChild(colEls.S.el);
+      colEls.S = makeCol('S', ''); cols.appendChild(colEls.S.el);
     }
     curView = v;
   }
@@ -151,7 +159,7 @@
     el.dataset.side = side;
     const svg = document.createElementNS(SVGNS, 'svg');
     svg.setAttribute('class', 'layer');
-    svg.innerHTML = '<defs><pattern id="hatch' + side + '" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)"><line x1="0" y1="0" x2="0" y2="14" stroke="var(--hatch)" stroke-width="1.2"/></pattern></defs><g class="cl"></g><g class="ln"></g>';
+    svg.innerHTML = '<defs><pattern id="hatch' + side + '" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="24" stroke="var(--hatch)" stroke-width="1.4"/></pattern></defs><g class="cl"></g><g class="ln"></g>';
     el.appendChild(svg);
     const head = document.createElement('div');
     head.className = 'col-head';
@@ -192,7 +200,7 @@
 
   function geom(colEl) {
     const H = colEl.clientHeight, W = colEl.clientWidth;
-    const clockH = window.matchMedia('(max-width: 760px)').matches ? 32 : 40;
+    const clockH = window.matchMedia('(max-width: 760px)').matches ? 34 : 46;
     const y0 = H - clockH, top = 40;
     const span = engine.state.timelineMin * 60;
     return { H, W, y0, top, span, y: t => y0 - (t - engine.last.now) / span * (y0 - top) };
@@ -210,16 +218,16 @@
       const y = g.y(t); if (y < g.top - 2) break;
       const m = new Date(t * 1000).getUTCMinutes();
       const long = m % 5 === 0;
-      const len = long ? 9 : 5;
+      const len = long ? 16 : 9;
       s += '<line x1="0" x2="' + len + '" y1="' + y + '" y2="' + y + '" stroke="var(--tick)" stroke-width="1.5"/>';
       s += '<line x1="' + (W - len) + '" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="var(--tick)" stroke-width="1.5"/>';
       if (long && y < g.y0 - 10) {
         const txt = m === 0 ? hhmm(t) : pad(m);
-        s += '<text x="' + W / 2 + '" y="' + (y + 5) + '" text-anchor="middle" fill="var(--tick)" font-family="B612, sans-serif" font-weight="700" font-size="' + (m === 0 ? (W < 60 ? 10 : 13) : (W < 60 ? 12 : 16)) + '">' + txt + '</text>';
+        s += '<text x="' + W / 2 + '" y="' + (y + (W < 60 ? 4 : 8)) + '" text-anchor="middle" fill="var(--tick)" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="' + (m === 0 ? (W < 60 ? 10 : 19) : (W < 60 ? 12 : 23)) + '">' + txt + '</text>';
       }
     }
     sc.svg.innerHTML = s;
-    sc.clock.textContent = hhmm(now, ' ');
+    sc.clock.textContent = hhmm(now);
   }
 
   function drawClosures(c) {
@@ -246,18 +254,20 @@
   }
 
   function labelSvg(w, h, pointsRight, color) {
-    const tip = 11;
+    const tip = h * 0.55;
     const pts = pointsRight
       ? [[1, 1], [w - tip, 1], [w - 1, h / 2], [w - tip, h - 1], [1, h - 1]]
       : [[tip, 1], [w - 1, 1], [w - 1, h - 1], [tip, h - 1], [1, h / 2]];
-    return '<svg class="shape" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none"><polygon points="' + pts.map(p => p.join(',')).join(' ') + '" fill="var(--label-bg)" stroke="' + color + '" stroke-width="2.4"/></svg>';
+    return '<svg class="shape" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none"><polygon points="' + pts.map(p => p.join(',')).join(' ') + '" fill="var(--label-bg)" stroke="' + color + '" stroke-width="3"/></svg>';
   }
 
-  function drawColumn(c, items, mode) {
+  function drawColumn(c, items, mode, view) {
     const g = geom(c.el);
     const mobile = window.matchMedia('(max-width: 760px)').matches;
-    const LH = mobile ? 22 : 26, GAP = 2, LEAD = mobile ? 14 : 26;
-    const labelW = Math.max(90, Math.min(mobile ? 170 : 300, g.W - LEAD - 6));
+    const mid = window.matchMedia('(max-width: 1200px)').matches;
+    const LH = mobile ? 22 : mid ? 27 : 30, GAP = 3, LEAD = mobile ? 14 : 34;
+    const labelW = Math.max(90, Math.min(mobile ? 170 : mid ? 280 : 340, g.W - LEAD - 6));
+    const showStream = view && view.streams && view.streams.length > 1;
     const pointsRight = c.side === 'N' || c.side === 'C';
     const now = engine.last.now;
     const keep = {};
@@ -282,9 +292,9 @@
       const xTip = pointsRight ? g.W - LEAD : LEAD;
       if (bent) {
         const xk = pointsRight ? g.W - 8 : 8;
-        lines += '<polyline points="' + xEdge + ',' + ideal + ' ' + xk + ',' + ideal + ' ' + xTip + ',' + cy + '" fill="none" stroke="' + color + '" stroke-width="1.4"/>';
+        lines += '<polyline points="' + xEdge + ',' + ideal + ' ' + xk + ',' + ideal + ' ' + xTip + ',' + cy + '" fill="none" stroke="' + color + '" stroke-width="1.6"/>';
       } else {
-        lines += '<line x1="' + xEdge + '" y1="' + ideal + '" x2="' + xTip + '" y2="' + cy + '" stroke="' + color + '" stroke-width="1.4"/>';
+        lines += '<line x1="' + xEdge + '" y1="' + ideal + '" x2="' + xTip + '" y2="' + cy + '" stroke="' + color + '" stroke-width="1.6"/>';
       }
 
       let el = c.labels[it.cs];
@@ -294,8 +304,7 @@
         el.dataset.cs = it.cs;
         el.tabIndex = 0;
         el.addEventListener('pointerdown', onPointerDown);
-        el.addEventListener('dblclick', () => { if (canEdit()) { engine.unlock(el.dataset.cs); closeDetail(); tick(); } });
-        el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(el.dataset.cs, el); } });
+        el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenuAt(el.dataset.cs, el); } });
         c.el.appendChild(el);
         c.labels[it.cs] = el;
       }
@@ -303,8 +312,11 @@
       el.classList.toggle('editable', editable);
       el.style.width = labelW + 'px';
       el.style.top = (cy - LH / 2) + 'px';
-      if (pointsRight) { el.style.left = ''; el.style.right = LEAD + 'px'; el.style.padding = '0 ' + 14 + 'px 0 8px'; }
-      else { el.style.right = ''; el.style.left = LEAD + 'px'; el.style.padding = '0 6px 0 14px'; }
+      // Pfeilspitze zeigt auf den Zeitstrahl; der blaue static-Block sitzt am anderen Ende
+      const stPad = engine.state.staticMode ? (mobile ? 10 : 18) : 0;
+      const tipPad = mobile ? 12 : 22, endPad = mobile ? 5 : 8;
+      if (pointsRight) { el.style.left = ''; el.style.right = LEAD + 'px'; el.style.padding = '0 ' + tipPad + 'px 0 ' + (endPad + stPad) + 'px'; }
+      else { el.style.right = ''; el.style.left = LEAD + 'px'; el.style.padding = '0 ' + (endPad + stPad) + 'px 0 ' + tipPad + 'px'; }
       const wtc = it.wtc && it.wtc !== 'M' ? it.wtc : '';
       let right;
       if (mode === 'ctr') {
@@ -312,12 +324,13 @@
       } else {
         right = '<span class="mi">' + Math.round(it.remainingNm) + '</span>';
       }
-      const st = engine.state.staticMode ? '<span class="st"></span>' : '';
+      const st = engine.state.staticMode ? '<span class="st" style="' + (pointsRight ? 'left' : 'right') + ':4px"></span>' : '';
       const man = it.locked ? '<span class="man" title="manuell platziert"></span>' : '';
-      const sig = [labelW, LH, pointsRight, it.iaf, it.cs, wtc, mode === 'ctr' ? it.ctrStrokes : Math.round(it.remainingNm), st, man].join('|');
+      const sub = showStream && it.stream ? '<span class="sub">' + ((cfg.iafs[it.iaf].streams[it.stream] || {}).sector || it.stream) + '</span>' : '';
+      const sig = [labelW, LH, pointsRight, it.iaf, it.cs, wtc, sub, mode === 'ctr' ? it.ctrStrokes : Math.round(it.remainingNm), st, man].join('|');
       if (el.dataset.sig !== sig) {
         el.dataset.sig = sig;
-        el.innerHTML = labelSvg(labelW, LH, pointsRight, color) + man + '<span class="cs">' + it.cs + '</span><span class="wtc">' + wtc + '</span>' + right + st;
+        el.innerHTML = labelSvg(labelW, LH, pointsRight, color) + st + man + '<span class="cs">' + it.cs + '</span><span class="wtc">' + wtc + '</span>' + sub + right;
         el.setAttribute('aria-label', it.cs + (wtc ? ' ' + wtc : '') + ', ' + hhmm(it._t) + (mode === 'ctr' ? ', ' + (it.ctrStrokes || 0) + ' Minuten verlieren' : ', ' + Math.round(it.remainingNm) + ' NM'));
       }
     }
@@ -334,10 +347,13 @@
     drawScale();
     if (isCtrView(v)) {
       const c = colEls.C;
-      const items = last.list.filter(i => i.iaf === v && !i.passedIaf && !i.hold && i.staIaf != null).map(i => Object.assign(i, { _t: i.staIaf }));
-      drawColumn(c, items, 'ctr');
+      const view = ctrView(v);
+      const items = last.list.filter(i => showsItem(view, i) && !i.passedIaf && !i.hold && i.staIaf != null).map(i => Object.assign(i, { _t: i.staIaf }));
+      drawColumn(c, items, 'ctr', view);
       c.tag.classList.toggle('on', st.staticMode); c.tag.textContent = st.staticMode ? 'static' : 'dynamic'; c.tag.disabled = true;
+      $('frameTitle').textContent = view.label;
     } else {
+      $('frameTitle').textContent = 'AMAN EDDM ' + v;
       for (const side of ['N', 'S']) {
         const c = colEls[side];
         drawClosures(c);
@@ -352,11 +368,11 @@
     }
     $('rwyVal').textContent = last.dir || '26';
     $('rwyAuto').textContent = st.dir === 'auto' ? 'AUTO' : 'MANUELL';
+    $('btnRwy').title = 'Betriebsrichtung ' + (st.dir === 'auto' ? 'automatisch' : 'manuell') + ' (Klick: AUTO, 26, 08)';
     $('btnRwy').disabled = !editable;
     $('len').value = st.timelineMin; $('lenVal').textContent = st.timelineMin;
-    $('btnRecompute').disabled = !editable;
     renderHold();
-    renderDetail();
+    if (menu && !engine.last.byCs[menu.cs]) closeMenu();
     renderStats('N'); renderStats('S');
     renderStatus();
   }
@@ -377,7 +393,7 @@
       li.classList.toggle('editable', ed);
       li.title = ed ? 'Auf Nord- oder Suedbahn ziehen, um den Flieger wieder einzuplanen' : '';
       li.addEventListener('pointerdown', onPointerDown);
-      li.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(cs, li); } });
+      li.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenuAt(cs, li); } });
       ul.appendChild(li);
     }
   }
@@ -424,7 +440,7 @@
     if (!drag.active && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return;
     if (!drag.active) {
       drag.active = true;
-      closeDetail();
+      closeMenu();
       const r = drag.el.getBoundingClientRect();
       drag.el.classList.add('dragging');
       drag.el.style.position = 'fixed'; drag.el.style.right = ''; drag.el.style.width = r.width + 'px';
@@ -445,7 +461,7 @@
     d.el.style.position = '';
     for (const side of ['N', 'S']) if (colEls[side]) colEls[side].el.classList.remove('over');
     if (!d.active) {
-      if (e.type === 'pointerup') openDetail(d.cs, d.el);
+      if (e.type === 'pointerup' && d.canMove) openMenu(d.cs, e.clientX, e.clientY);
       tick(); return;
     }
     const x = e.clientX, y = e.clientY;
@@ -472,94 +488,47 @@
     for (const k of Object.keys(colEls)) { const c = colEls[k]; if (c.labels && c.labels[d.cs]) { c.labels[d.cs].remove(); delete c.labels[d.cs]; } }
     tick();
   }
-  // ---------- Detail-Info ----------
-  let detail = null; // { cs, anchor }
-  function openDetail(cs, anchor) {
-    if (detail && detail.cs === cs) { closeDetail(); return; }
-    detail = { cs, anchor };
-    $('detail').hidden = false;
-    $('detail').dataset.sig = '';
-    renderDetail();
-    $('detail').focus({ preventScroll: true });
+  // ---------- Menue am Flieger: CHANGE RWY, HOLD, RECOMPUTE ----------
+  let menu = null; // { cs, anchor }
+  function openMenuAt(cs, anchor) {
+    const r = anchor.getBoundingClientRect();
+    openMenu(cs, r.left + r.width / 2, r.bottom, anchor);
   }
-  function closeDetail() {
-    if (!detail) return;
-    const a = detail.anchor;
-    detail = null;
-    $('detail').hidden = true;
+  function openMenu(cs, x, y, anchor) {
+    if (!canEdit()) return;
+    const it = engine.last.byCs[cs];
+    if (!it) return;
+    menu = { cs, anchor: anchor || document.querySelector('.label[data-cs="' + cs + '"], #holdList li[data-cs="' + cs + '"]') };
+    const m = $('acmenu');
+    const other = it.side === 'N' ? 'S' : 'N';
+    const otherRwy = cfg.runways[other].ids[engine.last.dir || '26'];
+    m.innerHTML = '<div class="mt">' + it.cs + ' ' + (it.hold ? 'HOLD' : it.rwy) + '</div>' +
+      '<button type="button" role="menuitem" data-act="rwy">CHANGE RWY ' + otherRwy + '</button>' +
+      '<button type="button" role="menuitem" data-act="hold"' + (it.hold ? ' disabled' : '') + '>HOLD</button>' +
+      '<button type="button" role="menuitem" data-act="recompute">RECOMPUTE</button>';
+    m.hidden = false;
+    const bw = m.offsetWidth, bh = m.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
+    m.style.left = Math.max(8, Math.min(vw - bw - 8, x + 4)) + 'px';
+    m.style.top = Math.max(8, Math.min(vh - bh - 8, y + 4)) + 'px';
+    m.querySelector('button:not([disabled])').focus({ preventScroll: true });
+  }
+  function closeMenu() {
+    if (!menu) return;
+    const a = menu.anchor;
+    menu = null;
+    $('acmenu').hidden = true;
     if (a && a.isConnected) a.focus({ preventScroll: true });
   }
-  const mins = s => (s < 0 ? '-' : s > 0 ? '+' : '') + (Math.abs(s) / 60).toFixed(1) + ' min';
-  function renderDetail() {
-    if (!detail) return;
-    const box = $('detail');
-    const it = engine.last.byCs[detail.cs];
-    if (!it) { closeDetail(); return; }
-    const ctr = isCtrView(viewKey());
-    const ed = canEdit();
-    const rows = [];
-    rows.push(['Typ', (it.type || '----') + ' / ' + (it.wtc || 'M')]);
-    rows.push(['IAF', it.iaf + (it.passedIaf ? ' (passiert)' : '')]);
-    rows.push(['Bahn', it.rwy + (it.manualRwy ? ' (manuell)' : '')]);
-    if (ctr) {
-      rows.push(['ETA IAF', it.etaIaf ? hhmm(it.etaIaf) : '--:--']);
-      rows.push(['STA IAF', it.staIaf ? hhmm(it.staIaf) : '--:--']);
-      rows.push(['Verlieren', mins(it.delayIaf || 0)]);
-      rows.push(['davon CTR', (it.ctrStrokes || 0) + ' min']);
-    } else {
-      rows.push(['ETA', hhmm(it.eta)]);
-      rows.push(['STA', it.hold ? 'im Hold' : hhmm(it.sta)]);
-      rows.push(['Delay', it.hold ? '-' : mins(it.delay)]);
-      if (!it.passedIaf && it.etaIaf) rows.push(['ETA IAF', hhmm(it.etaIaf) + (it.ctrStrokes ? ', CTR ' + it.ctrStrokes + ' min' : '')]);
-      if (it.gapToPrev != null && !it.hold) rows.push(['Abstand vorn', (it.gapToPrev / 60).toFixed(1) + ' min']);
-    }
-    rows.push(['Restweg', Math.round(it.remainingNm) + ' NM']);
-    if (it.locked) rows.push(['Platzierung', 'manuell']);
-    const sig = JSON.stringify(rows) + ed + ctr;
-    if (box.dataset.sig !== sig) {
-      box.dataset.sig = sig;
-      let h = '<div class="detail-head"><strong>' + it.cs + '</strong><button type="button" class="btn-small" data-act="close" aria-label="Schliessen">X</button></div><dl>';
-      for (const [k, v] of rows) h += '<dt>' + k + '</dt><dd>' + v + '</dd>';
-      h += '</dl>';
-      if (ed && !ctr) {
-        const other = it.side === 'N' ? 'S' : 'N';
-        h += '<div class="detail-acts">';
-        h += it.hold
-          ? '<button type="button" class="btn-small" data-act="seq">EINPLANEN ' + (it.side === 'N' ? 'NORD' : 'SUED') + '</button>'
-          : '<button type="button" class="btn-small" data-act="hold">INS HOLD</button>';
-        h += '<button type="button" class="btn-small" data-act="swap">AUF ' + (other === 'N' ? 'NORD' : 'SUED') + '</button>';
-        if (it.locked || it.manualRwy) h += '<button type="button" class="btn-small" data-act="unlock">AUTOMATIK</button>';
-        h += '</div>';
-      }
-      box.innerHTML = h;
-    }
-    placeDetail();
-  }
-  function placeDetail() {
-    const box = $('detail'), a = detail && detail.anchor;
-    if (!a || !a.isConnected) {
-      const l = document.querySelector('.label[data-cs="' + (detail && detail.cs) + '"], #holdList li[data-cs="' + (detail && detail.cs) + '"]');
-      if (l) detail.anchor = l; else return;
-    }
-    const r = detail.anchor.getBoundingClientRect(), bw = box.offsetWidth, bh = box.offsetHeight;
-    const vw = window.innerWidth, vh = window.innerHeight;
-    let left = r.left + r.width / 2 - bw / 2;
-    left = Math.max(8, Math.min(vw - bw - 8, left));
-    let top = r.bottom + 6;
-    if (top + bh > vh - 8) top = Math.max(8, r.top - bh - 6);
-    box.style.left = left + 'px'; box.style.top = top + 'px';
-  }
-  function detailAction(act) {
-    if (!detail) return;
-    const cs = detail.cs, it = engine.last.byCs[cs];
-    if (act === 'close') { closeDetail(); return; }
+  function menuAction(act) {
+    if (!menu) return;
+    const cs = menu.cs, it = engine.last.byCs[cs];
+    closeMenu();
     if (!it || !canEdit()) return;
-    if (act === 'hold') engine.toHold(cs);
-    else if (act === 'seq') engine.insertByEta(cs, it.side);
-    else if (act === 'swap') engine.insertByEta(cs, it.side === 'N' ? 'S' : 'N');
-    else if (act === 'unlock') engine.unlock(cs);
+    if (act === 'rwy') engine.insertByEta(cs, it.side === 'N' ? 'S' : 'N');
+    else if (act === 'hold') engine.toHold(cs);
+    else if (act === 'recompute') engine.recomputeOne(cs);
     $('holdList').dataset.sig = '';
-    $('detail').dataset.sig = '';
+    for (const k of Object.keys(colEls)) { const c = colEls[k]; if (c.labels && c.labels[cs]) { c.labels[cs].remove(); delete c.labels[cs]; } }
     tick();
   }
 
@@ -574,20 +543,25 @@
       save(); tick();
     });
     $('len').addEventListener('input', e => { engine.state.timelineMin = +e.target.value; save(); tick(); });
-    $('btnRecompute').addEventListener('click', () => { engine.recompute(); tick(); });
     $('btnMenu').addEventListener('click', openSheet);
     $('btnClose').addEventListener('click', () => { $('sheet').hidden = true; });
     $('sheet').addEventListener('click', e => { if (e.target === $('sheet')) $('sheet').hidden = true; });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('sheet').hidden = true; closeDetail(); } });
-    $('detail').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (b) detailAction(b.dataset.act); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('sheet').hidden = true; closeMenu(); } });
+    $('acmenu').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (b && !b.disabled) menuAction(b.dataset.act); });
+    $('acmenu').addEventListener('keydown', e => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      const bs = [...$('acmenu').querySelectorAll('button:not([disabled])')];
+      const i = bs.indexOf(document.activeElement);
+      bs[(i + (e.key === 'ArrowDown' ? 1 : bs.length - 1)) % bs.length].focus();
+    });
     document.addEventListener('pointerdown', e => {
-      if (!detail || e.target.closest('#detail') || e.target.closest('.label') || e.target.closest('#holdList li')) return;
-      closeDetail();
+      if (!menu || e.target.closest('#acmenu')) return;
+      closeMenu();
     });
 
     $('selSource').addEventListener('change', e => { settings.source = e.target.value; save(); startSource(); syncSheet(); });
     $('selView').addEventListener('change', e => { settings.view = e.target.value; save(); tick(); });
-    $('selTheme').addEventListener('change', e => { settings.theme = e.target.value; applyTheme(); save(); });
     $('selGs').addEventListener('change', e => { engine.state.finalGsMode = e.target.value; save(); tick(); });
     $('rateN').addEventListener('change', e => { engine.state.rate.N = clampRate(e.target.value); save(); tick(); });
     $('rateS').addEventListener('change', e => { engine.state.rate.S = clampRate(e.target.value); save(); tick(); });
@@ -609,7 +583,7 @@
       engine = AmanCore.createEngine(cfg, Object.assign({}, engine.state, { ac: {}, seq: { N: [], S: [] }, hold: [], landed: [], cnt: { N: 0, S: 0 }, closures: [] }));
       startSource(); $('sheet').hidden = true;
     });
-    window.addEventListener('resize', () => { curView = null; closeDetail(); tick(); });
+    window.addEventListener('resize', () => { curView = null; closeMenu(); tick(); });
   }
   const clampRate = v => Math.max(10, Math.min(60, Math.round(+v || 45)));
 
@@ -618,7 +592,6 @@
     $('selSource').value = settings.source;
     $('selSource').querySelector('option[value="plugin"]').disabled = !isPluginHost;
     $('selView').value = settings.view;
-    $('selTheme').value = settings.theme;
     $('selGs').value = engine.state.finalGsMode;
     $('rateN').value = engine.state.rate.N; $('rateS').value = engine.state.rate.S;
     $('simRate').value = String(settings.simRate); $('simSpeed').value = String(settings.simSpeed); $('simWind').value = settings.simWind;

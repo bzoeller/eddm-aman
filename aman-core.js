@@ -88,6 +88,30 @@
     return best || { s: minS, cross: 0 };
   }
 
+  /**
+   * Erster Schnittpunkt eines Strahls (Position, Kurs) mit dem Pfad hinter minS.
+   * Liefert { s, d } (Pfadposition und Direktentfernung) oder null.
+   */
+  function rayHit(path, p, trk, minS, maxD) {
+    const ux = Math.sin(trk * Math.PI / 180), uy = Math.cos(trk * Math.PI / 180);
+    let best = null;
+    for (let i = 1; i < path.pts.length; i++) {
+      if (path.cum[i] <= minS) continue;
+      const a = path.pts[i - 1], b = path.pts[i];
+      const ex = b.x - a.x, ey = b.y - a.y;
+      const den = ux * ey - uy * ex;
+      if (Math.abs(den) < 1e-6) continue; // parallel
+      const wx = a.x - p.x, wy = a.y - p.y;
+      const u = (wx * ey - wy * ex) / den;   // Entfernung entlang des Strahls
+      const t = (wx * uy - wy * ux) / den;   // Anteil auf dem Segment
+      if (u < 0.3 || u > maxD || t < 0 || t > 1) continue;
+      const sHit = path.cum[i - 1] + t * (path.cum[i] - path.cum[i - 1]);
+      if (sHit <= minS) continue;
+      if (!best || u < best.d) best = { s: sHit, d: u };
+    }
+    return best;
+  }
+
   // ---------- Speedprofil ----------
   function profileIas(cfg, r, vapp) {
     const P = cfg.profile;
@@ -133,6 +157,17 @@
     const k = s / STEP_NM, i = Math.floor(k), f = k - i;
     if (i >= ttg.length - 1) return 0;
     return ttg[i] + (ttg[i + 1] - ttg[i]) * f;
+  }
+
+  /** Strom nach Peilung vom IAF zum Flieger, Bereiche [from, to) in Grad. */
+  function streamFor(streams, brg) {
+    const keys = Object.keys(streams);
+    for (const k of keys) {
+      const z = streams[k];
+      const inside = z.from <= z.to ? brg >= z.from && brg < z.to : brg >= z.from || brg < z.to;
+      if (inside) return k;
+    }
+    return keys[0];
   }
 
   // ---------- Engine ----------
@@ -195,6 +230,12 @@
       return Math.max(t, 3600 / Math.max(1, st.rate[side]));
     }
 
+    /** Mindestabstand (Radar oder Wirbelschleppe) in Sekunden, ohne FLOW und Landerate. */
+    function minSepSeconds(lead, foll, side, dir, winds) {
+      const nm = Math.max(cfg.defaults.minRadarSepNm || 2.5, wakeNm(lead, foll));
+      return nm / finalGs(foll, side, dir, winds) * 3600;
+    }
+
     /**
      * ETA fuer ein Flugzeug auf einem bestimmten Pfad.
      * Liefert eta (Touchdown), etaIaf, remainingNm, passedIaf, sNew.
@@ -217,8 +258,17 @@
         // Querabweichung (Vektoren, Delay) zaehlt als zusaetzliche Strecke zurueck auf den Pfad
         const extra = pr.cross > 1 ? pr.cross : 0;
         const gs = ac.gs > 60 ? ac.gs : 200;
-        const t = ttgAt(ttg, pr.s) + extra / gs * 3600;
-        return { eta: now + t, etaIaf: null, remainingNm: along + extra, passedIaf: true, sNew: pr.s, tIafToThr: ttg[0] };
+        let t = ttgAt(ttg, pr.s) + extra / gs * 3600, rem = along + extra, cut = false;
+        // Abkuerzung: Kurs schneidet den Pfad weiter vorn (z. B. frueh auf den Base oder direkt aufs Final)
+        const trk = a.trk;
+        if (trk != null) {
+          const hit = rayHit(path, p, trk, pr.s + 1, 30);
+          if (hit && hit.s - pr.s > hit.d + cfg.defaults.shortcutMinNm) {
+            const tHit = hit.d / gs * 3600 + ttgAt(ttg, hit.s);
+            if (tHit < t) { t = tHit; rem = hit.d + effRemaining(cfg, path, hit.s); cut = true; }
+          }
+        }
+        return { eta: now + t, etaIaf: null, remainingNm: rem, passedIaf: true, sNew: pr.s, tIafToThr: ttg[0], shortcut: cut };
       }
       const dIaf = ac.distToIaf != null ? Math.max(ac.distToIaf, toIafDirect) : toIafDirect;
       let gs;
@@ -248,9 +298,22 @@
         if (!a) a = st.ac[ac.cs] = { firstSeen: now };
         a.lastSeen = now;
         const p = proj.xy(ac.lat, ac.lon);
+        // Kurs ueber Grund: aus den Daten, sonst aus der Bewegung seit dem letzten Update
+        if (ac.trk != null) a.trk = ac.trk;
+        else if (ac.hdg != null) a.trk = ac.hdg;
+        else if (a.prevP) {
+          const mv = dist(a.prevP, p);
+          if (mv > 0.15) { a.trk = trackDeg(a.prevP, p); a.prevP = p; }
+        } else a.prevP = p;
         const iaf = (ac.iaf && cfg.iafs[ac.iaf]) ? ac.iaf : (a.iaf || nearestIaf(p));
         a.iaf = iaf;
         a.viaIaf = !!(ac.iaf && cfg.iafs[ac.iaf]);
+        // Einflugstrom (z. B. BETOS West ueber FUE oder Sued ueber STA): Peilung vom IAF,
+        // festgehalten sobald der Flieger naeher als 40 NM ist
+        const strm = cfg.iafs[iaf].streams;
+        if (!strm) a.stream = null;
+        else if (ac.stream && strm[ac.stream]) a.stream = ac.stream;
+        else if (!a.stream || !strm[a.stream] || dist(p, iafXY[iaf]) > 40) a.stream = streamFor(strm, trackDeg(iafXY[iaf], p));
 
         // Bahnzuteilung: manuell > Standard nach IAF > Ausweichen bei Sperre
         let side = a.rwySide || cfg.iafs[iaf].side;
@@ -283,10 +346,10 @@
         if (!a.captured) continue;
 
         items.push({
-          cs: ac.cs, type: ac.type || '', wtc: ac.wtc || 'M', iaf, viaIaf: a.viaIaf, side,
+          cs: ac.cs, type: ac.type || '', wtc: ac.wtc || 'M', iaf, stream: a.stream, viaIaf: a.viaIaf, side,
           rwy: rwyId(side, dir), eta: r.eta, etaIaf: r.etaIaf, tIafToThr: r.tIafToThr,
           remainingNm: r.remainingNm, passedIaf: r.passedIaf, hold: !!a.hold,
-          locked: !!a.locked, manualRwy: !!a.rwySide
+          locked: !!a.locked, manualRwy: !!a.rwySide, shortcut: !!r.shortcut
         });
       }
 
@@ -328,16 +391,18 @@
           }
           seq.splice(k, 0, n.cs);
         }
-        // dynamisch: benachbarte Paare tauschen, wenn ETA mehr als Hysterese ueberholt
-        if (!st.staticMode) {
+        // benachbarte Paare tauschen, wenn die ETA mehr als die Hysterese ueberholt
+        // Ueberholen hinter dem IAF (Abkuerzung) gilt auch im static-Modus: wer real vorn ist, ist vorn.
+        {
           const H = cfg.defaults.hysteresisSec;
           let changed = true, guard = 0;
           while (changed && guard++ < 200) {
             changed = false;
             for (let j = 0; j < seq.length - 1; j++) {
               const a = byCs[seq[j]], b = byCs[seq[j + 1]];
-              if (a.locked || b.locked || a.passedIaf || b.passedIaf) continue;
-              if (b.eta < a.eta - H) { seq[j] = b.cs; seq[j + 1] = a.cs; changed = true; }
+              if (a.locked || b.locked) continue;
+              const ok = st.staticMode ? (a.passedIaf && b.passedIaf) : (b.passedIaf || !a.passedIaf);
+              if (ok && b.eta < a.eta - H) { seq[j] = b.cs; seq[j + 1] = a.cs; changed = true; }
             }
           }
         }
@@ -347,13 +412,24 @@
         let prevItem = null;
         seq.forEach((cs, idx) => {
           const it = byCs[cs], a = st.ac[cs];
-          let sta = it.eta;
-          if (st.staticMode && a.frozenSta) sta = Math.max(sta, a.frozenSta);
-          if (prevItem) sta = Math.max(sta, prevItem.sta + sepSeconds(prevItem, it, side, dir, winds));
+          // reqSta = geplante Landezeit mit Staffelung (daraus das Delay, das noch aufzunehmen ist)
+          let req = it.eta;
+          if (st.staticMode && a.frozenSta && !it.passedIaf) req = Math.max(req, a.frozenSta);
+          if (prevItem) req = Math.max(req, prevItem.reqSta + sepSeconds(prevItem, it, side, dir, winds));
           let guard2 = 0, c;
-          while ((c = closedAt(side, sta)) && guard2++ < 20) sta = c.to;
+          while ((c = closedAt(side, req)) && guard2++ < 20) req = c.to;
+          // Hinter dem IAF steht der Streifen auf der aktuellen Vorhersage: werden Zeit und Meilen
+          // auf Downwind oder Final kuerzer (Abkuerzung, schneller), rueckt er sofort nach.
+          // Vor dem IAF steht er auf der geplanten Zeit.
+          // Nicht naeher als die Mindeststaffelung (Radar oder Wirbelschleppe) an den Vordermann.
+          let sta = req;
+          if (it.passedIaf) {
+            sta = it.eta;
+            if (prevItem) sta = Math.max(sta, prevItem.sta + minSepSeconds(prevItem, it, side, dir, winds));
+          }
           it.sta = sta;
-          it.delay = sta - it.eta;
+          it.reqSta = req;
+          it.delay = req - it.eta;
           it.seqIndex = idx;
           it.gapToPrev = prevItem ? sta - prevItem.sta : null;
           if (it.etaIaf != null) {
@@ -432,6 +508,13 @@
       for (const s of SIDES) st.seq[s] = st.seq[s].filter(c => c !== cs);
       if (st.hold.indexOf(cs) < 0) st.hold.push(cs);
     }
+    /** Einen Flieger neu planen: Hold, manuelle Bahn und Position aufheben, nach ETA neu einsortieren. */
+    function recomputeOne(cs) {
+      const a = st.ac[cs]; if (!a) return;
+      a.hold = false; a.locked = false; a.rwySide = null; a.frozenSta = null;
+      st.hold = st.hold.filter(c => c !== cs);
+      for (const s of SIDES) st.seq[s] = st.seq[s].filter(c => c !== cs);
+    }
     function recompute() {
       for (const cs of st.hold) if (st.ac[cs]) st.ac[cs].hold = false;
       st.hold = [];
@@ -447,7 +530,7 @@
     }
     function removeClosure(id) { st.closures = st.closures.filter(c => c.id !== id); }
     return {
-      cfg, state: st, update, stats, moveTo, insertByEta, toHold, recompute, unlock, setStatic,
+      cfg, state: st, update, stats, moveTo, insertByEta, toHold, recompute, recomputeOne, unlock, setStatic,
       addClosure, removeClosure, paths, proj, timeTable: (path, vapp, winds) => timeTable(cfg, path, vapp, winds),
       get last() { return last; },
       set: (k, v) => { st[k] = v; },
@@ -461,13 +544,27 @@
     for (const r of ['APP', 'TWR', 'CTR']) if (new RegExp(cfg.roles[r]).test(callsign)) return r;
     return 'OBS';
   }
-  /** CTR-Sektor (NDL/RDG/STA) aus dem Callsign, z. B. EDMM_NDL_CTR. */
-  function ctrSector(cfg, callsign) {
-    const m = /^EDMM_([A-Z0-9]+)_CTR$/.exec(callsign || '');
+  /**
+   * CTR-Ansicht aus dem Callsign, z. B. EDMM_NDG_CTR -> ROKIL, EDMM_FUE_CTR -> BETOS-FUE.
+   * online = Liste der eingeloggten Callsigns (falls das Plugin sie liefert): Ist bei FUE/STA
+   * der Nachbarsektor nicht besetzt, gibt es die combined-Ansicht mit beiden Stroemen.
+   */
+  function ctrSector(cfg, callsign, online) {
+    const m = /^EDMM_([A-Z0-9]+?)\d?_CTR$/.exec(callsign || '') || /^EDMM_([A-Z0-9]+)_CTR$/.exec(callsign || '');
     if (!m) return null;
-    const iaf = Object.keys(cfg.iafs).find(k => cfg.iafs[k].sector === m[1]);
-    return iaf || null;
+    const views = cfg.ctrViews || [];
+    const own = views.find(v => v.sector === m[1]);
+    if (!own) return null;
+    if (Array.isArray(online)) {
+      const comb = views.find(v => v.combine && v.combine.indexOf(m[1]) >= 0);
+      if (comb) {
+        const others = comb.combine.filter(x => x !== m[1]);
+        const staffed = others.some(x => online.some(c => new RegExp('^EDMM_' + x + '\\d?_CTR$').test(c)));
+        if (!staffed) return comb.id;
+      }
+    }
+    return own.id;
   }
 
-  return { createEngine, roleFor, ctrSector, parseMetarWind, makeProjection, headwind, tasFromIas, preparePaths, pointAt };
+  return { createEngine, rayHit, roleFor, ctrSector, parseMetarWind, makeProjection, headwind, tasFromIas, preparePaths, pointAt };
 });

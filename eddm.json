@@ -27,13 +27,21 @@
    }
   }
  },
+ "ctrViews": [
+  { "id": "ROKIL", "iaf": "ROKIL", "sector": "NDG", "label": "CTR NDG (ROKIL)" },
+  { "id": "LANDU", "iaf": "LANDU", "sector": "RDG", "label": "CTR RDG (LANDU)" },
+  { "id": "BETOS-FUE", "iaf": "BETOS", "sector": "FUE", "streams": ["W"], "label": "CTR FUE (BETOS West)" },
+  { "id": "BETOS-STA", "iaf": "BETOS", "sector": "STA", "streams": ["S"], "label": "CTR STA (BETOS Sued)" },
+  { "id": "BETOS", "iaf": "BETOS", "sector": "FUE+STA", "streams": ["W", "S"], "combine": ["FUE", "STA"], "label": "CTR FUE+STA combined (BETOS)" },
+  { "id": "NAPSA", "iaf": "NAPSA", "sector": "WIEN", "label": "Wien (NAPSA)" }
+ ],
  "iafs": {
   "ROKIL": {
    "lat": 48.51333,
    "lon": 11.19667,
    "side": "N",
    "color": "#e8e8e8",
-   "sector": "NDL"
+   "sector": "NDG"
   },
   "LANDU": {
    "lat": 48.59667,
@@ -47,7 +55,11 @@
    "lon": 11.35,
    "side": "S",
    "color": "#e8d53a",
-   "sector": "STA"
+   "sector": "FUE/STA",
+   "streams": {
+    "W": { "name": "West", "sector": "FUE", "from": 220, "to": 360 },
+    "S": { "name": "Sued", "sector": "STA", "from": 90, "to": 220 }
+   }
   },
   "NAPSA": {
    "lat": 48.14333,
@@ -1222,7 +1234,7 @@
   "finalGsMode": "typwind",
   "fixedFinalGs": 140,
   "bentLineBelowMin": 2,
-  "lostAfterSec": 60
+  "lostAfterSec": 60, "shortcutMinNm": 2, "refreshSec": 5, "minRadarSepNm": 2.5
  },
  "roles": {
   "APP": "^EDDM_.*APP$",

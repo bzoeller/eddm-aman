@@ -5,25 +5,24 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>EDDM AMAN</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="app" id="app">
   <main class="scope" id="scope" aria-label="Arrival-Sequenz">
     <div class="frame-title" id="frameTitle">AMAN EDDM</div>
+    <div class="scope-bar" aria-hidden="true"><i></i></div>
     <div class="cols" id="cols"></div>
   </main>
 
   <aside class="side" id="side" aria-label="Bedienung">
-    <button class="btn-exit" id="btnMenu" type="button">MENU</button>
+    <button class="btn-exit" id="btnMenu" type="button" title="Einstellungen">EXIT</button>
 
     <div class="box rwybox">
       <button class="rwy" id="btnRwy" type="button" title="Betriebsrichtung: AUTO, 26, 08">
         <span class="rwy-l">RWY</span>
         <span class="rwy-v" id="rwyVal">26</span>
-        <span class="rwy-auto" id="rwyAuto">AUTO</span>
+        <span class="rwy-auto" id="rwyAuto" hidden>AUTO</span>
       </button>
       <label class="len" for="len">
         <input type="range" id="len" min="20" max="90" step="5" value="45" aria-label="Laenge Zeitstrahl in Minuten">
@@ -31,20 +30,17 @@
       </label>
     </div>
 
-    <div class="box holdbox" id="holdBox" aria-label="Hold-Feld">
-      <div class="hold-title">HOLD</div>
+    <div class="holdbox" id="holdBox" aria-label="Hold-Feld">
       <ul class="hold-list" id="holdList"></ul>
-      <button class="btn-small" id="btnRecompute" type="button">RECOMPUTE</button>
+      <div class="vscroll" aria-hidden="true"><i></i></div>
     </div>
 
     <div class="stats" id="statsN"></div>
     <div class="stats" id="statsS"></div>
-
-    <div class="status" id="status"></div>
   </aside>
 </div>
 
-<div class="detail" id="detail" role="dialog" aria-label="Flugdetails" tabindex="-1" hidden></div>
+<div class="acmenu" id="acmenu" role="menu" aria-label="Flieger" hidden></div>
 
 <div class="sheet" id="sheet" hidden>
   <div class="sheet-inner" role="dialog" aria-label="Einstellungen">
@@ -52,6 +48,8 @@
       <strong>Einstellungen</strong>
       <button class="btn-small" id="btnClose" type="button">SCHLIESSEN</button>
     </div>
+
+    <div class="status" id="status"></div>
 
     <section>
       <h3>Datenquelle und Ansicht</h3>
@@ -68,18 +66,6 @@
           <option value="auto">Automatisch nach Callsign</option>
           <option value="APP">APP</option>
           <option value="TWR">TWR</option>
-          <option value="ROKIL">CTR NDL (ROKIL)</option>
-          <option value="LANDU">CTR RDG (LANDU)</option>
-          <option value="BETOS">CTR STA (BETOS)</option>
-          <option value="NAPSA">Wien (NAPSA)</option>
-        </select>
-      </div>
-      <div class="row">
-        <label for="selTheme">Darstellung</label>
-        <select id="selTheme">
-          <option value="system">wie System</option>
-          <option value="dark">dunkel</option>
-          <option value="light">hell</option>
         </select>
       </div>
     </section>
@@ -143,7 +129,7 @@
       <button class="btn-small" id="btnSimReset" type="button">SIMULATION NEU STARTEN</button>
     </section>
 
-    <p class="hint">Bedienung als APP: Label ziehen zum Tauschen oder auf die andere Bahn, ins Hold-Feld ziehen zum Rausnehmen. Klick auf ein Label zeigt ETA, STA und Delay, dort auch Hold, Bahnwechsel und Automatik. Aus dem Hold-Feld ziehst du Flieger direkt zurueck auf eine Bahn. Doppelklick auf ein Label hebt die manuelle Platzierung auf. Klick auf „static“ friert die Sequenz ein. FLOW unten aendert den Abstand pro Bahn.</p>
+    <p class="hint">Bedienung als APP: Label ziehen zum Tauschen oder auf die andere Bahn, ins Hold-Feld ziehen zum Rausnehmen. Klick auf ein Label oeffnet das Menue mit CHANGE RWY, HOLD und RECOMPUTE. Aus dem Hold-Feld ziehst du Flieger direkt zurueck auf eine Bahn. Die Anzeige wird alle 5 Sekunden aktualisiert. Klick auf „static“ friert die Sequenz ein. FLOW unten aendert den Abstand pro Bahn.</p>
   </div>
 </div>
 

@@ -14,7 +14,8 @@
     ['BCS3', 'M', 4], ['DH8D', 'M', 3], ['AT76', 'M', 2], ['A333', 'H', 3], ['A359', 'H', 4], ['B77W', 'H', 3], ['B789', 'H', 3],
     ['B748', 'H', 2], ['A388', 'J', 1], ['C25B', 'L', 1]
   ];
-  const INBOUND = { ROKIL: 300, LANDU: 25, BETOS: 225, NAPSA: 95 };
+  // Einflugrichtungen je IAF (Peilung vom IAF aus); BETOS hat zwei Stroeme: West (FUE) und Sued (STA)
+  const INBOUND = { ROKIL: [300], LANDU: [25], BETOS: [265, 265, 190], NAPSA: [95] };
   const WEIGHT = { ROKIL: 0.3, LANDU: 0.2, BETOS: 0.3, NAPSA: 0.2 };
 
   function createSim(cfg, opts) {
@@ -48,13 +49,15 @@
     function spawn(distFromIaf) {
       const iaf = pick(Object.keys(WEIGHT).map(k => [k, WEIGHT[k]]));
       const t = TYPES[Math.floor(pickIndex(TYPES.map(x => x[2])))];
-      const brg = (INBOUND[iaf] + (rnd() - 0.5) * 30) * Math.PI / 180;
+      const dirs = INBOUND[iaf];
+      const brg = (dirs[Math.floor(rnd() * dirs.length)] + (rnd() - 0.5) * 30) * Math.PI / 180;
       const d = distFromIaf != null ? distFromIaf : 150 + rnd() * 30;
       const I = proj.xy(cfg.iafs[iaf].lat, cfg.iafs[iaf].lon);
       const ac = {
         cs: callsign(), type: t[0], wtc: t[1], iaf,
         x: I.x + Math.sin(brg) * d, y: I.y + Math.cos(brg) * d,
-        alt: 0, gs: 0, phase: 'enroute', s: 0, d0: Math.max(d, 60)
+        alt: 0, gs: 0, phase: 'enroute', s: 0, d0: Math.max(d, 60),
+        cut: rnd() < 0.35 // APP dreht diesen Flieger frueh auf das Final, wenn er kein Delay hat
       };
       ac.alt = altFor(ac, d);
       sim.aircraft.push(ac);
@@ -137,11 +140,37 @@
             else gs = gs * Math.max(floor, Math.min(1, f));
           }
           ac.gs = gsTrue;
+          // Abkuerzung: ohne Delay vom Downwind direkt auf ein 12-NM-Final
+          if (ac.cut && !ac.didCut && r > P.finalNm + 6 && ac.s > 3 && (!info || info.delay < 20)) {
+            const sT = path.length - (P.finalNm - 3);
+            const T = Core.pointAt(path, sT), here = Core.pointAt(path, ac.s);
+            const dDirect = Math.hypot(T.x - here.x, T.y - here.y);
+            // nur abkuerzen, wenn danach noch genug Abstand zum Vordermann bleibt (gut 2 min)
+            const saved = ((sT - ac.s) * path.k - dDirect) / Math.max(150, gs) * 3600;
+            const room = !info || info.gapToPrev == null || info.gapToPrev - saved >= 130;
+            if (sT - ac.s > dDirect + 4 && room) {
+              ac.didCut = true; ac.phase = 'direct'; ac.sT = sT; ac.path = path;
+              continue;
+            }
+          }
           ac.s += gs * dt / 3600 / (r > P.finalNm ? path.k : 1);
           const q = Core.pointAt(path, ac.s);
           ac.x = q.x; ac.y = q.y; ac.hdg = q.trk; ac.alt = alt;
           if (ac.s >= path.length) ac.phase = 'landed';
         }
+      }
+      for (const ac of sim.aircraft) {
+        if (ac.phase !== 'direct') continue;
+        const T = Core.pointAt(ac.path, ac.sT);
+        const dx = T.x - ac.x, dy = T.y - ac.y, d = Math.hypot(dx, dy);
+        const trk = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+        const w = sim.wind.aloft;
+        const gs = Math.max(120, Core.tasFromIas(cfg.profile.downwind, ac.alt) - Core.headwind(trk, w));
+        const move = gs * dt / 3600;
+        ac.gs = gs; ac.hdg = trk;
+        if (move >= d) { ac.x = T.x; ac.y = T.y; ac.s = ac.sT; ac.phase = 'path'; }
+        else { ac.x += dx / d * move; ac.y += dy / d * move; }
+        ac.alt = Math.max(cfg.elevationFt + 3000, ac.alt - 1200 * dt / 60);
       }
       sim.aircraft = sim.aircraft.filter(a => a.phase !== 'landed');
     }
@@ -153,7 +182,7 @@
         activeDir: sim.dir,
         aircraft: sim.aircraft.map(a => {
           const p = proj.ll(a.x, a.y);
-          return { cs: a.cs, type: a.type, wtc: a.wtc, lat: p.lat, lon: p.lon, alt: Math.round(a.alt), gs: Math.round(a.gs), hdg: a.hdg, iaf: a.iaf, passedIaf: a.phase === 'path' };
+          return { cs: a.cs, type: a.type, wtc: a.wtc, lat: p.lat, lon: p.lon, alt: Math.round(a.alt), gs: Math.round(a.gs), hdg: a.hdg, iaf: a.iaf, passedIaf: a.phase === 'path' || a.phase === 'direct' };
         })
       };
     }
