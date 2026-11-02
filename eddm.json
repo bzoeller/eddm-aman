@@ -1249,7 +1249,7 @@
   "finalGsMode": "typwind",
   "fixedFinalGs": 140,
   "bentLineBelowMin": 2,
-  "lostAfterSec": 60, "shortcutMinNm": 2, "refreshSec": 5, "minRadarSepNm": 2.5, "rwyChangeBufferSec": 30
+  "lostAfterSec": 60, "shortcutMinNm": 2, "refreshSec": 5, "minRadarSepNm": 2.5, "rwyChangeBufferSec": 30, "vectorAreaNm": 45, "vectorMaxAltFt": 16000, "vectorMissNm": 3
  },
  "roles": {
   "APP": "^EDDM_.*APP$",

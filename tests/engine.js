@@ -107,5 +107,25 @@ for (const D of ['26', '08']) {
   ok(L.byCs.H4000.remainingNm < 10 && L.byCs.H9000.remainingNm > 14, 'auf 8 NM Final: 4000 ft = ' + L.byCs.H4000.remainingNm.toFixed(0) + ' NM, 9000 ft nicht auf dem Final = ' + L.byCs.H9000.remainingNm.toFixed(0) + ' NM');
 }
 
+// 6) Per Heading Richtung Final gefuehrt, ohne den IAF zu ueberfliegen (Fall DLH1745, RWY 08):
+//    frueh erkennen und direkt rechnen; ein Flieger, der normal auf BETOS zufliegt, bleibt unveraendert
+{
+  const run = (x0, y0, trk) => {
+    const e = Core.createEngine(cfg, { dir: '08' }), P = e.proj;
+    const mk = (cs, x, y, t, alt, gs, star) => Object.assign({ cs, type: 'A320', wtc: 'M', alt, gs, trk: t, hdg: t, star, route: star.slice(0, 5), arrRwy: '08R' }, P.ll(x, y));
+    const etas = []; let L;
+    for (let k = 0; k <= 24; k++) {
+      const r = trk * Math.PI / 180, d = 250 * 5 * k / 3600;
+      L = e.update({ aircraft: [mk('TEST', x0 + Math.sin(r) * d, y0 + Math.cos(r) * d, trk, 9000, 250, 'SOTOV1A'), mk('OCN5ZP', 12, -5.2, 265, 14500, 270, 'NAPSA1A')] }, T0 + 5 * k, {});
+      etas.push(L.byCs.TEST.eta);
+    }
+    return { it: L.byCs.TEST, o: L.byCs.OCN5ZP, spread: Math.max(...etas) - Math.min(...etas) };
+  };
+  const v = run(-12, -24, 352), n = run(-16, -32, 356);
+  ok(v.it.passedIaf && v.it.sta < v.o.sta, 'Heading direkt Final 9 NM vor BETOS: erkannt und vor OCN5ZP geplant (' + v.it.remainingNm.toFixed(0) + ' NM)');
+  ok(v.spread < 30, 'Landezeit dabei stabil (Schwankung ' + Math.round(v.spread) + ' s ueber 2 min)');
+  ok(!n.it.passedIaf && n.it.remainingNm > 60, 'normal Richtung BETOS: weiter ueber die Transition (' + n.it.remainingNm.toFixed(0) + ' NM)');
+}
+
 console.log(fails ? fails + ' Fehler' : 'alles gruen');
 process.exit(fails ? 1 : 0);

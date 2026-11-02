@@ -150,6 +150,23 @@
     return out;
   }
 
+  /** Alle Schnittpunkte eines Strahls mit dem Pfad hinter minS, nach Entfernung sortiert. */
+  function rayHits(path, p, trk, minS, maxD) {
+    const ux = Math.sin(trk * Math.PI / 180), uy = Math.cos(trk * Math.PI / 180), out = [];
+    for (let i = 1; i < path.pts.length; i++) {
+      if (path.cum[i] <= minS) continue;
+      const a = path.pts[i - 1], b = path.pts[i];
+      const ex = b.x - a.x, ey = b.y - a.y, den = ux * ey - uy * ex;
+      if (Math.abs(den) < 1e-6) continue;
+      const wx = a.x - p.x, wy = a.y - p.y;
+      const u = (wx * ey - wy * ex) / den, t = (wx * uy - wy * ux) / den;
+      if (u < 0.3 || u > maxD || t < 0 || t > 1) continue;
+      const sHit = path.cum[i - 1] + t * (path.cum[i] - path.cum[i - 1]);
+      if (sHit > minS) out.push({ s: sHit, d: u });
+    }
+    return out.sort((x, y) => x.d - y.d);
+  }
+
   // ---------- Speedprofil ----------
   function profileIas(cfg, r, vapp) {
     const P = cfg.profile;
@@ -318,6 +335,27 @@
       return Math.max(t, 3600 / Math.max(1, st.rate[side]));
     }
 
+    function vectoredEta(ac, a, path, p, ttg, toIafDirect) {
+      const D = cfg.defaults;
+      if (a.trk == null || ac.inHold || toIafDirect < 3) return null;
+      if (Math.hypot(p.x, p.y) > (D.vectorAreaNm || 45)) return null;            // nur im Anflugbereich
+      if (ac.alt != null && ac.alt > (D.vectorMaxAltFt || 16000)) return null;
+      // Fliegt der Kurs am IAF vorbei? (seitlicher Abstand am naechsten Punkt, oder IAF liegt hinter dem Flieger)
+      const brg = trackDeg(p, path.pts[0]);
+      const diff = Math.abs(((a.trk - brg) % 360 + 540) % 360 - 180);
+      const miss = diff >= 90 ? toIafDirect : toIafDirect * Math.sin(diff * Math.PI / 180);
+      if (miss < (D.vectorMissNm || 3)) return null;
+      const gs = ac.gs > 60 ? ac.gs : 220;
+      const tVia = toIafDirect / gs * 3600 + ttg[0];
+      let best = null;
+      for (const h of rayHits(path, p, a.trk, 2, 40)) {
+        const t = h.d / gs * 3600 + ttgAt(ttg, h.s);
+        if (!best || t < best.t) best = { t, rem: h.d + effRemaining(cfg, path, h.s), s: h.s };
+      }
+      if (!best || best.t > tVia - 60) return null;                              // spart weniger als 1 min: weiter via IAF
+      return best;
+    }
+
     /** Ist der Flieger tief genug, um auf dem Final zu sein (Standard 7000 ft oder darunter)? */
     function finalAllowed(ac) { return ac.alt == null || ac.alt <= (cfg.profile.finalMaxAltFt || 7000); }
 
@@ -354,14 +392,22 @@
         // Abkuerzung: Kurs schneidet den Pfad weiter vorn (z. B. frueh auf den Base oder direkt aufs Final)
         const trk = a.trk;
         // nicht im Holding und nicht direkt am IAF (dort zeigt der Kurs oft zufaellig auf den Pfad)
-        if (trk != null && !ac.inHold && pr.s > 3) {
-          const hit = rayHit(path, p, trk, pr.s + 1, 30);
-          if (hit && hit.s - pr.s > hit.d + cfg.defaults.shortcutMinNm) {
+        if (trk != null && !ac.inHold && (pr.s > 3 || a.vectored)) {
+          for (const hit of rayHits(path, p, trk, pr.s + 1, 30)) {
+            if (hit.s - pr.s <= hit.d + cfg.defaults.shortcutMinNm) continue;
             const tHit = hit.d / gs * 3600 + ttgAt(ttg, hit.s);
             if (tHit < t) { t = tHit; rem = hit.d + effRemaining(cfg, path, hit.s); cut = true; }
           }
         }
         return { eta: now + t, etaIaf: null, remainingNm: rem, passedIaf: true, sNew: pr.s, tIafToThr: ttg[0], shortcut: cut, tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) };
+      }
+      // Per Heading gefuehrt, ohne den IAF zu ueberfliegen (z. B. direkt Richtung Final): Zeigt der Kurs im
+      // Anflugbereich deutlich am IAF vorbei auf einen spaeteren Teil des Pfades, gilt der Flieger als von APP
+      // gefuehrt. Gerechnet wird direkt bis zum Schnittpunkt, ab dort Standardprofil.
+      const vec = vectoredEta(ac, a, path, p, ttg, toIafDirect);
+      if (vec) {
+        return { eta: now + vec.t, etaIaf: null, remainingNm: vec.rem, passedIaf: true, sNew: 0, tIafToThr: ttg[0], shortcut: true, vectored: true,
+          tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) };
       }
       const dIaf = ac.distToIaf != null ? Math.max(ac.distToIaf, toIafDirect) : toIafDirect;
       let gs;
@@ -521,6 +567,7 @@
           const rx = computeEtaX(ac, a, rwyId(side, acDir), now, winds);
           if (rx) r = rx;
         } else { a.xOn = false; a.xMin = 0; }
+        if (r.vectored) a.vectored = true;
         a.side = side;
         a.dir = acDir;
         if (r.passedIaf && r.viaDownwind) a.passedIaf = true;
@@ -804,5 +851,5 @@
     return own.id;
   }
 
-  return { createEngine, sanitizeState, downwindPaths, rayHit, streamByRoute, roleFor, ctrSector, parseMetarWind, makeProjection, headwind, tasFromIas, preparePaths, pointAt };
+  return { createEngine, sanitizeState, downwindPaths, rayHit, rayHits, streamByRoute, roleFor, ctrSector, parseMetarWind, makeProjection, headwind, tasFromIas, preparePaths, pointAt };
 });

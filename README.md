@@ -81,6 +81,7 @@ Beides stellt APP über einen Klick auf den RWY-Kasten ein. Alle Zeiten sind UTC
 - **Vektoren auf den anderen Downwind:** Ist der Flieger schon hinter dem IAF, rechnet das AMAN mit Vektoren auf den Downwind der neuen Bahn. Nord ist DM428–DM422 (08L) bzw. DM421–DM427 (26R), Süd ist DM458–DM452 (08R) bzw. DM452–DM457 (26L).
   - Bis dorthin zählt der direkte Weg nach Kurs (sonst der kürzeste Weg) zum Eintrittspunkt auf dem neuen Downwind. Base und Final sind als Eintritt ausgeschlossen.
   - Ab Erreichen des neuen Downwinds gilt das Standardprofil von dort.
+- **Per Heading geführt, ohne den IAF zu überfliegen:** Zeigt der Kurs eines Fliegers im Anflugbereich (unter 45 NM vom Platz, unter FL160) mehr als 3 NM am IAF vorbei auf einen späteren Teil des Pfades (Downwind, Base, Final), gilt er sofort als von APP geführt. Das AMAN rechnet dann direkt bis zum Schnittpunkt und ab dort mit dem Standardprofil, wenn das mindestens 1 min spart (`vectorAreaNm`, `vectorMaxAltFt`, `vectorMissNm`).
 - **Final erst ab 7000 ft:** Ein Flieger gilt erst ab 7000 ft oder darunter als auf dem Final (`profile.finalMaxAltFt`). Wer höher die Anfluglinie kreuzt, wird nicht aufs Final gerechnet.
 
 ## Holdings
