@@ -1243,7 +1243,7 @@
   "finalGsMode": "typwind",
   "fixedFinalGs": 140,
   "bentLineBelowMin": 2,
-  "lostAfterSec": 60, "shortcutMinNm": 2, "refreshSec": 5, "minRadarSepNm": 2.5, "rwyChangeGapSec": 120
+  "lostAfterSec": 60, "shortcutMinNm": 2, "refreshSec": 5, "minRadarSepNm": 2.5, "rwyChangeBufferSec": 30
  },
  "roles": {
   "APP": "^EDDM_.*APP$",

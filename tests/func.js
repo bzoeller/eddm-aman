@@ -147,9 +147,28 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
   for (let i = 0; i < 12 && !switched; i++) { await p.waitForTimeout(3000); switched = (await p.textContent('#rwyVal')) === '08'; }
   ok(switched, 'Richtung wechselt zum Zeitpunkt automatisch auf 08');
   ok(!(await p.$('.scale line.rwyc')) && (await p.textContent('#rwyNext')) === '', 'Linie nach dem Wechsel weg');
+  ok(!(await p.isVisible('#dirWarn')), 'Simulation: keine Warnung, Richtungen stimmen');
   ok(errs.length === 0, 'keine JS-Fehler ' + errs.join(' | '));
 
-  // 11) Telefon
+  // 11) EuroScope dreht das AMAN nicht: Simulation meldet 08, AMAN bleibt 26 und zeigt eine Warnung
+  const w = await b.newPage({ viewport: { width: 1400, height: 900 } });
+  w.on('pageerror', e => errs.push(e.message));
+  await w.addInitScript(() => {
+    let real;
+    Object.defineProperty(window, 'AmanSim', {
+      configurable: true,
+      get() { return real; },
+      set(v) { real = { createSim: (c, o) => { const x = v.createSim(c, o); const t = x.traffic; x.traffic = () => Object.assign(t(), { activeDir: '08' }); return x; } }; }
+    });
+  });
+  await w.goto(URL); await w.waitForTimeout(1500);
+  const warnTxt = await w.textContent('#dirWarn');
+  ok((await w.textContent('#rwyVal')) === '26', 'AMAN bleibt auf 26, obwohl EuroScope 08 meldet');
+  ok(await w.isVisible('#dirWarn') && /EuroScope 08, AMAN 26/.test(warnTxt), 'Warnung am Rand: ' + warnTxt);
+  await w.screenshot({ path: out + '/mismatch.png' });
+  await w.close();
+
+  // 12) Telefon
   const q = await b.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   q.on('pageerror', e => errs.push(e.message));
   await q.goto(URL); await q.waitForTimeout(1500);

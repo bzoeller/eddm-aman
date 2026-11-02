@@ -384,10 +384,15 @@
       }
     }
     $('rwyVal').textContent = last.dir || '26';
-    $('rwyAuto').textContent = st.dir === 'auto' ? 'AUTO' : 'MANUELL';
     $('rwyNext').textContent = last.dirChange ? '\u2192' + last.dirChange.to + ' ' + hhmm(last.dirChange.at) : '';
     if (!$('rwyDlg').hidden) syncRwyDlg(false);
-    $('btnRwy').title = 'Betriebsrichtung ' + (st.dir === 'auto' ? 'automatisch' : 'manuell') + ' (Klick: AUTO, 26, 08)';
+    // EuroScope dreht das AMAN nicht mit; passt die Richtung dort nicht, gibt es am Rand eine Meldung
+    const es = last.esDir, wEl = $('dirWarn');
+    const warn = es && es !== last.dir
+      ? 'RWY MISMATCH: EuroScope ' + es + ', AMAN ' + last.dir + (last.dirChange && last.dirChange.to === es ? ' (Wechsel auf ' + es + ' um ' + hhmm(last.dirChange.at) + ' geplant)' : '')
+      : '';
+    if (wEl.textContent !== warn) wEl.textContent = warn;
+    wEl.hidden = !warn;
     $('btnRwy').disabled = !editable;
     $('len').value = st.timelineMin; $('lenVal').textContent = st.timelineMin;
     renderHold();
@@ -642,8 +647,6 @@
   function syncRwyDlg(full) {
     const cur = engine.last.dir || '26', chg = engine.state.dirChange;
     for (const b of $('chDir').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.dir === chTarget));
-    $('btnDirAuto').hidden = !!simApi;
-    $('btnDirAuto').disabled = engine.state.dir === 'auto';
     const pl = $('chPlanned');
     const sig = chg ? chg.id + '|' + chg.at : 'none';
     if (pl.dataset.sig !== sig) {
@@ -700,7 +703,6 @@
       }
       err(''); save(); tick(); syncRwyDlg(true);
     });
-    $('btnDirAuto').addEventListener('click', () => { engine.state.dir = 'auto'; engine.clearDirChange(); save(); tick(); syncRwyDlg(true); });
     $('btnAddClosure').addEventListener('click', () => {
       if (!canEdit()) return;
       const now = nowSec();

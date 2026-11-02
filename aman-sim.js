@@ -137,7 +137,7 @@
           let gs = Math.max(80, Core.tasFromIas(ias, alt) - Core.headwind(trkNow, w));
           const gsTrue = gs;
           // APP verlaengert per Vektoren: Fortschritt entlang des Pfades wird langsamer
-          if (info && info.delay > 15 && r > P.finalNm) {
+          if (info && info.delay > 5 && r > P.finalNm) {
             // Delay muss vor dem 15-NM-Final weg sein: nur die Zeit bis dorthin wird gestreckt
             const tBeforeFinal = Math.max(1, (r - P.finalNm) * path.k / gs * 3600);
             const f = tBeforeFinal / (tBeforeFinal + info.delay);
@@ -193,7 +193,7 @@
     function traffic() {
       return {
         source: 'sim',
-        activeDir: sim.dir,
+        // keine activeDir: in der Simulation gibt es kein EuroScope, das eine Richtung melden koennte
         aircraft: sim.aircraft.map(a => {
           const p = proj.ll(a.x, a.y);
           return { cs: a.cs, type: a.type, wtc: a.wtc, lat: p.lat, lon: p.lon, alt: Math.round(a.alt), gs: Math.round(a.gs), hdg: a.hdg, iaf: a.iaf, route: a.route, passedIaf: a.phase === 'path' || a.phase === 'direct' };

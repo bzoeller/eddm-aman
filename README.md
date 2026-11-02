@@ -62,9 +62,10 @@ Beides stellt APP über einen Klick auf den RWY-Kasten ein. Alle Zeiten sind UTC
 
 - **Runway Change:** neue Richtung (26 oder 08) wählen, dann „ab jetzt“ oder „um HH:MM“.
   - Ein geplanter Wechsel steht als **grün gestrichelte Linie** am Zeitstrahl, darüber klein die neue Richtung (z. B. `RWY 08`). Im RWY-Kasten steht er zusätzlich als `→08 14:20`.
-  - Wer nach dem Zeitpunkt landet, wird schon jetzt auf die neue Richtung geplant: Pfad, Restweg und Zeiten gelten für die neue Bahn. Pro Bahn kommen erst alle Anflüge der alten Richtung, dann mit einer Lücke von `rwyChangeGapSec` (120 s) die der neuen. Vor dem Zeitpunkt landet niemand in der neuen Richtung.
+  - Wer nach dem Zeitpunkt landet, wird schon jetzt auf die neue Richtung geplant: Pfad, Restweg und Zeiten gelten für die neue Bahn. Erst landen alle Anflüge der alten Richtung (auf beiden Bahnen). Der erste Flieger der neuen Richtung ist erst bei 15 NM, wenn die letzte Landung der alten Richtung erfolgt ist, plus `rwyChangeBufferSec` (30 s) Puffer. Vor dem Zeitpunkt landet niemand in der neuen Richtung.
   - Flieger, die schon hinter dem IAF sind, behalten ihre Richtung.
-  - Zum Zeitpunkt wechselt das AMAN automatisch die Richtung, und die Linie verschwindet. „LOESCHEN“ nimmt einen geplanten Wechsel zurück. „AUTO“ übernimmt die Richtung wieder aus EuroScope (nur mit Plugin).
+  - Zum Zeitpunkt wechselt das AMAN automatisch die Richtung, und die Linie verschwindet. „LOESCHEN“ nimmt einen geplanten Wechsel zurück.
+  - Die Betriebsrichtung kommt nur aus dem AMAN. Eine gedrehte Bahn in EuroScope ändert am AMAN nichts. Weicht sie ab, steht am Rand rot `RWY MISMATCH: EuroScope 08, AMAN 26`.
 - **Bahnsperre:** Bahn (Nord, Süd oder beide), Beginn „ab jetzt“ oder „um HH:MM“, Ende „um HH:MM“. Gesperrte Zeiten sind orange schraffiert, Anflüge weichen auf die andere Bahn aus oder werden hinter die Sperre geplant. Aufheben geht in der Liste im Dialog oder per „SPERRE AUFHEBEN“ am Schirm.
 
 ## Downwind und Final

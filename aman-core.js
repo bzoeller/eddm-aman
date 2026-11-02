@@ -194,7 +194,7 @@
   function defaultState(cfg) {
     const d = cfg.defaults;
     return {
-      dir: 'auto',                 // 'auto' | '26' | '08'
+      dir: '26',                   // Betriebsrichtung, nur im AMAN einstellbar ('26' | '08')
       staticMode: false,
       spacing: { N: d.spacingNm, S: d.spacingNm },
       rate: { N: d.ratePerRwy, S: d.ratePerRwy },
@@ -294,7 +294,7 @@
             if (tHit < t) { t = tHit; rem = hit.d + effRemaining(cfg, path, hit.s); cut = true; }
           }
         }
-        return { eta: now + t, etaIaf: null, remainingNm: rem, passedIaf: true, sNew: pr.s, tIafToThr: ttg[0], shortcut: cut };
+        return { eta: now + t, etaIaf: null, remainingNm: rem, passedIaf: true, sNew: pr.s, tIafToThr: ttg[0], shortcut: cut, tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) };
       }
       const dIaf = ac.distToIaf != null ? Math.max(ac.distToIaf, toIafDirect) : toIafDirect;
       let gs;
@@ -304,7 +304,7 @@
         gs = Math.max(150, tasFromIas(cfg.profile.belowFL100, Math.max(ac.alt || 8000, 4000)) - headwind(trk, winds.aloft));
       }
       const tIaf = dIaf / gs * 3600;
-      return { eta: now + tIaf + ttg[0], etaIaf: now + tIaf, remainingNm: dIaf + effRemaining(cfg, path, 0), passedIaf: false, sNew: 0, tIafToThr: ttg[0] };
+      return { eta: now + tIaf + ttg[0], etaIaf: now + tIaf, remainingNm: dIaf + effRemaining(cfg, path, 0), passedIaf: false, sNew: 0, tIafToThr: ttg[0], tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) };
     }
 
     /**
@@ -315,7 +315,9 @@
       winds = winds || {};
       // geplanter Runway Change: Zeitpunkt erreicht -> Richtung wechselt automatisch
       if (st.dirChange && now >= st.dirChange.at) { st.dir = st.dirChange.to; st.dirChange = null; }
-      const dir = st.dir === 'auto' ? (traffic.activeDir || '26') : st.dir;
+      // Die Richtung kommt nur aus dem AMAN. EuroScope (activeDir) wird nur verglichen, siehe esDir.
+      if (st.dir !== '26' && st.dir !== '08') st.dir = '26';
+      const dir = st.dir;
       const ch = st.dirChange && st.dirChange.to !== dir ? st.dirChange : null;
       const seen = {};
       const items = [];
@@ -396,7 +398,7 @@
 
         items.push({
           cs: ac.cs, type: ac.type || '', wtc: ac.wtc || 'M', iaf, stream: a.stream, viaIaf: a.viaIaf, side,
-          dir: acDir, rwy: rwyId(side, acDir), eta: r.eta, etaIaf: r.etaIaf, tIafToThr: r.tIafToThr,
+          dir: acDir, rwy: rwyId(side, acDir), tFinal: r.tFinal, eta: r.eta, etaIaf: r.etaIaf, tIafToThr: r.tIafToThr,
           remainingNm: r.remainingNm, passedIaf: r.passedIaf, hold: !!a.hold,
           locked: !!a.locked, manualRwy: !!a.rwySide, shortcut: !!r.shortcut
         });
@@ -462,17 +464,32 @@
         }
         st.seq[side] = seq;
 
-        // STA berechnen
-        let prevItem = null;
-        seq.forEach((cs, idx) => {
+      }
+
+      // STA berechnen. Bei einem Runway Change zuerst alle Anfluege der alten Richtung (beide Bahnen),
+      // dann die neue: der erste Flieger der neuen Richtung ist erst bei 15 NM, wenn die letzte
+      // Landung der alten Richtung erfolgt ist.
+      const tgtDir = ch ? ch.to : dir;
+      const prevBy = { N: null, S: null }, idxBy = { N: 0, S: 0 };
+      let lastOld = null;
+      for (const phase of [0, 1]) {
+        if (phase === 1) {
+          for (const side of SIDES) for (const cs of st.seq[side]) {
+            const i = byCs[cs];
+            if (i.dir !== tgtDir) lastOld = Math.max(lastOld == null ? -Infinity : lastOld, i.sta, i.reqSta);
+          }
+        }
+        for (const side of SIDES) for (const cs of st.seq[side]) {
           const it = byCs[cs], a = st.ac[cs];
+          if ((phase === 0) !== (it.dir !== tgtDir)) continue;
+          const prevItem = prevBy[side];
           // reqSta = geplante Landezeit mit Staffelung (daraus das Delay, das noch aufzunehmen ist)
           let req = it.eta;
           if (st.staticMode && a.frozenSta && !it.passedIaf) req = Math.max(req, a.frozenSta);
           if (prevItem) req = Math.max(req, prevItem.reqSta + sepSeconds(prevItem, it, side, it.dir, winds));
-          // Runway Change: neue Richtung erst ab dem Zeitpunkt, dazu eine Luecke zum letzten Flieger der alten Richtung
+          // Runway Change: neue Richtung erst ab dem Zeitpunkt und erst bei 15 NM, wenn die alte Richtung leer ist
           if (ch && it.dir === ch.to) req = Math.max(req, ch.at);
-          if (prevItem && prevItem.dir !== it.dir) req = Math.max(req, Math.max(prevItem.reqSta, prevItem.sta) + (cfg.defaults.rwyChangeGapSec || 0));
+          if (phase === 1 && lastOld != null) req = Math.max(req, lastOld + (it.tFinal || 0) + (cfg.defaults.rwyChangeBufferSec || 0));
           let guard2 = 0, c;
           while ((c = closedAt(side, req)) && guard2++ < 20) req = c.to;
           // Hinter dem IAF steht der Streifen auf der aktuellen Vorhersage: werden Zeit und Meilen
@@ -488,7 +505,7 @@
           it.reqSta = req;
           it.delay = req - it.eta;
           a.lastDelay = it.delay;
-          it.seqIndex = idx;
+          it.seqIndex = idxBy[side]++;
           it.gapToPrev = prevItem ? sta - prevItem.sta : null;
           if (it.etaIaf != null) {
             const staIaf = sta - it.tIafToThr;
@@ -498,13 +515,13 @@
             it.ctrStrokes = Math.round(ctr / 60);
           } else { it.staIaf = null; it.delayIaf = 0; it.ctrStrokes = 0; }
           if (!st.staticMode) a.frozenSta = null;
-          prevItem = it;
-        });
+          prevBy[side] = it;
+        }
       }
       for (const i of items) if (i.hold) { i.sta = i.eta; i.delay = 0; }
 
       const bySide = { N: st.seq.N.map(cs => byCs[cs]), S: st.seq.S.map(cs => byCs[cs]) };
-      last = { list: items, bySide, byCs, now, dir, winds, dirChange: ch };
+      last = { list: items, bySide, byCs, now, dir, winds, dirChange: ch, esDir: traffic.activeDir || null };
       return last;
     }
 
