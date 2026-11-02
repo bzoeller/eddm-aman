@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>EDDM AMAN</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app" id="app">
+  <main class="scope" id="scope" aria-label="Arrival-Sequenz">
+    <div class="frame-title" id="frameTitle">AMAN EDDM</div>
+    <div class="cols" id="cols"></div>
+  </main>
+
+  <aside class="side" id="side" aria-label="Bedienung">
+    <button class="btn-exit" id="btnMenu" type="button">MENU</button>
+
+    <div class="box rwybox">
+      <button class="rwy" id="btnRwy" type="button" title="Betriebsrichtung: AUTO, 26, 08">
+        <span class="rwy-l">RWY</span>
+        <span class="rwy-v" id="rwyVal">26</span>
+        <span class="rwy-auto" id="rwyAuto">AUTO</span>
+      </button>
+      <label class="len" for="len">
+        <input type="range" id="len" min="20" max="90" step="5" value="45" aria-label="Laenge Zeitstrahl in Minuten">
+        <span id="lenVal">45</span>
+      </label>
+    </div>
+
+    <div class="box holdbox" id="holdBox" aria-label="Hold-Feld">
+      <div class="hold-title">HOLD</div>
+      <ul class="hold-list" id="holdList"></ul>
+      <button class="btn-small" id="btnRecompute" type="button">RECOMPUTE</button>
+    </div>
+
+    <div class="stats" id="statsN"></div>
+    <div class="stats" id="statsS"></div>
+
+    <div class="status" id="status"></div>
+  </aside>
+</div>
+
+<div class="detail" id="detail" role="dialog" aria-label="Flugdetails" tabindex="-1" hidden></div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-inner" role="dialog" aria-label="Einstellungen">
+    <div class="sheet-head">
+      <strong>Einstellungen</strong>
+      <button class="btn-small" id="btnClose" type="button">SCHLIESSEN</button>
+    </div>
+
+    <section>
+      <h3>Datenquelle und Ansicht</h3>
+      <div class="row">
+        <label for="selSource">Quelle</label>
+        <select id="selSource">
+          <option value="plugin">EuroScope-Plugin</option>
+          <option value="sim">Simulation</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="selView">Ansicht</label>
+        <select id="selView">
+          <option value="auto">Automatisch nach Callsign</option>
+          <option value="APP">APP</option>
+          <option value="TWR">TWR</option>
+          <option value="ROKIL">CTR NDL (ROKIL)</option>
+          <option value="LANDU">CTR RDG (LANDU)</option>
+          <option value="BETOS">CTR STA (BETOS)</option>
+          <option value="NAPSA">Wien (NAPSA)</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="selTheme">Darstellung</label>
+        <select id="selTheme">
+          <option value="system">wie System</option>
+          <option value="dark">dunkel</option>
+          <option value="light">hell</option>
+        </select>
+      </div>
+    </section>
+
+    <section>
+      <h3>Staffelung</h3>
+      <div class="row">
+        <label for="selGs">Umrechnung NM in Zeit</label>
+        <select id="selGs">
+          <option value="typwind">Typ und Wind</option>
+          <option value="fixed">fix 140 kt</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="rateN">Landerate Nord pro h</label>
+        <input type="number" id="rateN" min="10" max="60" step="1">
+      </div>
+      <div class="row">
+        <label for="rateS">Landerate Sued pro h</label>
+        <input type="number" id="rateS" min="10" max="60" step="1">
+      </div>
+    </section>
+
+    <section>
+      <h3>Bahnsperre</h3>
+      <div class="row">
+        <label for="clSide">Bahn</label>
+        <select id="clSide"><option value="N">Nord</option><option value="S">Sued</option><option value="B">beide</option></select>
+      </div>
+      <div class="row">
+        <label for="clFrom">von (Minuten ab jetzt)</label>
+        <input type="number" id="clFrom" min="0" max="240" value="0">
+      </div>
+      <div class="row">
+        <label for="clTo">bis (Minuten ab jetzt)</label>
+        <input type="number" id="clTo" min="1" max="600" value="20">
+      </div>
+      <button class="btn-small" id="btnAddClosure" type="button">SPERRE SETZEN</button>
+      <ul class="cl-list" id="clList"></ul>
+    </section>
+
+    <section id="simSection">
+      <h3>Simulation</h3>
+      <div class="row">
+        <label for="simRate">Anmeldungen pro h</label>
+        <select id="simRate"><option>20</option><option>40</option><option selected>60</option><option>90</option></select>
+      </div>
+      <div class="row">
+        <label for="simSpeed">Tempo</label>
+        <select id="simSpeed"><option value="1">1x</option><option value="2">2x</option><option value="5" selected>5x</option><option value="10">10x</option></select>
+      </div>
+      <div class="row">
+        <label for="simWind">Bodenwind</label>
+        <select id="simWind">
+          <option value="0/0">ruhig</option>
+          <option value="250/10" selected>250/10</option>
+          <option value="260/25">260/25</option>
+          <option value="080/15">080/15</option>
+        </select>
+      </div>
+      <button class="btn-small" id="btnSimReset" type="button">SIMULATION NEU STARTEN</button>
+    </section>
+
+    <p class="hint">Bedienung als APP: Label ziehen zum Tauschen oder auf die andere Bahn, ins Hold-Feld ziehen zum Rausnehmen. Klick auf ein Label zeigt ETA, STA und Delay, dort auch Hold, Bahnwechsel und Automatik. Aus dem Hold-Feld ziehst du Flieger direkt zurueck auf eine Bahn. Doppelklick auf ein Label hebt die manuelle Platzierung auf. Klick auf „static“ friert die Sequenz ein. FLOW unten aendert den Abstand pro Bahn.</p>
+  </div>
+</div>
+
+<script src="aman-core.js"></script>
+<script src="aman-sim.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

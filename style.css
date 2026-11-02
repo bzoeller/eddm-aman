@@ -1,0 +1,186 @@
+/* Layout: Radarschirm-Optik wie das echte AMAN. Links Nordbahn, Zeitstrahl, rechts Suedbahn, rechts daneben die Bedienleiste.
+   Dunkel ist der Normalfall (Bildschirm im Tower), hell als Alternative. */
+:root {
+  --bg: #050607;
+  --panel: #0a0c0f;
+  --frame: #b9bec6;
+  --fg: #e7eaee;
+  --muted: #8a919b;
+  --scale-bg: #14171b;
+  --tick: #dfe3e8;
+  --label-bg: #0e1013;
+  --miles: #3fe06b;
+  --static: #1f3cf5;
+  --static-fg: #e7eaee;
+  --hatch: #d9643c;
+  --now: #e5413b;
+  --iaf-ROKIL: #e8e8e8;
+  --iaf-LANDU: #3b74ff;
+  --iaf-BETOS: #e8d53a;
+  --iaf-NAPSA: #e5413b;
+  --focus: #7aa2ff;
+  --font-ui: "B612", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "B612 Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #e9ecef; --panel: #f7f8f9; --frame: #4b525c; --fg: #12161b; --muted: #5d6570;
+    --scale-bg: #dde1e6; --tick: #1c2128; --label-bg: #ffffff; --miles: #0d7f33;
+    --static: #1f3cf5; --static-fg: #ffffff; --hatch: #c4522c; --now: #c92a24;
+    --iaf-ROKIL: #6b7480; --iaf-LANDU: #1f55e0; --iaf-BETOS: #a88f00; --iaf-NAPSA: #c92a24; --focus: #1f55e0;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #e9ecef; --panel: #f7f8f9; --frame: #4b525c; --fg: #12161b; --muted: #5d6570;
+  --scale-bg: #dde1e6; --tick: #1c2128; --label-bg: #ffffff; --miles: #0d7f33;
+  --static: #1f3cf5; --static-fg: #ffffff; --hatch: #c4522c; --now: #c92a24;
+  --iaf-ROKIL: #6b7480; --iaf-LANDU: #1f55e0; --iaf-BETOS: #a88f00; --iaf-NAPSA: #c92a24; --focus: #1f55e0;
+  color-scheme: light;
+}
+
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px; box-sizing: border-box;
+}
+button, select, input { font: inherit; color: inherit; }
+button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.app { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 12px; height: 100%; min-height: 560px; }
+
+/* ---------- Schirm ---------- */
+.scope { position: relative; border: 3px solid var(--frame); border-top-width: 8px; background: var(--bg); min-width: 0; display: flex; flex-direction: column; }
+.frame-title { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); font: 9px var(--font-mono); color: var(--bg); letter-spacing: .08em; }
+.cols { position: relative; flex: 1; display: grid; min-height: 0; }
+.cols.app-view { grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr); }
+.cols.ctr-view { grid-template-columns: minmax(0, 1fr) 64px; }
+
+.col { position: relative; overflow: hidden; touch-action: none; }
+.col-head { position: absolute; top: 6px; z-index: 3; display: flex; gap: 6px; align-items: center; }
+.col.N .col-head { right: 6px; }
+.col.S .col-head, .col.C .col-head { left: 6px; }
+.col.C .col-head { left: auto; right: 6px; }
+.tag { font: 15px var(--font-mono); padding: 2px 8px; border: 1px solid var(--muted); background: transparent; color: var(--muted); cursor: pointer; }
+.tag.on { background: var(--static); border-color: var(--static); color: var(--static-fg); }
+.tag[disabled] { cursor: default; }
+.col-name { font: 11px var(--font-mono); color: var(--muted); letter-spacing: .1em; }
+
+.flow { position: absolute; bottom: 6px; z-index: 3; display: flex; align-items: stretch; border: 2px solid var(--frame); background: var(--panel); }
+.col.N .flow, .col.C .flow { left: 6px; }
+.col.S .flow { right: 6px; }
+.flow span { font-size: 10px; padding: 4px 6px; color: var(--fg); }
+.flow input { width: 64px; border: 0; border-left: 2px solid var(--frame); background: var(--bg); text-align: center; font: 700 22px var(--font-ui); font-variant-numeric: tabular-nums; padding: 2px 0; }
+.flow input:disabled { opacity: 1; -webkit-text-fill-color: var(--fg); }
+
+.col svg.layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.closure-x { position: absolute; z-index: 4; font: 11px var(--font-mono); border: 1px solid var(--hatch); background: var(--bg); color: var(--hatch); cursor: pointer; padding: 1px 6px; }
+
+/* Zeitstrahl */
+.scale { position: relative; background: var(--scale-bg); border-left: 2px solid var(--frame); border-right: 2px solid var(--frame); }
+.scale svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.clock { position: absolute; left: -2px; right: -2px; bottom: 0; height: 40px; border: 2px solid var(--frame); border-top: 3px solid var(--now); background: var(--panel); display: grid; place-items: center; font: 700 18px var(--font-ui); font-variant-numeric: tabular-nums; }
+
+/* Labels */
+.label {
+  position: absolute; height: 26px; display: flex; align-items: center; gap: 6px; box-sizing: border-box;
+  font: 18px var(--font-mono); color: var(--fg); cursor: default; user-select: none; -webkit-user-select: none; z-index: 2;
+}
+.label .shape { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.label .cs { position: relative; white-space: nowrap; letter-spacing: .02em; }
+.label .wtc { position: relative; min-width: 1ch; }
+.label .mi { position: relative; margin-left: auto; color: var(--miles); font-size: 16px; font-variant-numeric: tabular-nums; }
+.label .st { position: relative; width: 10px; height: 20px; background: var(--static); flex: none; }
+.label .strokes { position: relative; margin-left: auto; display: flex; gap: 3px; }
+.label .strokes i { display: block; width: 12px; height: 3px; background: var(--miles); }
+.label .man { position: relative; width: 6px; height: 6px; background: var(--fg); flex: none; }
+.label.editable { cursor: grab; }
+.label.dragging { cursor: grabbing; z-index: 50; opacity: .9; }
+.label.held { position: relative; }
+
+/* ---------- Bedienleiste ---------- */
+.side { display: flex; flex-direction: column; gap: 10px; min-width: 0; font-family: var(--font-ui); }
+.btn-exit { border: 2px solid var(--frame); background: var(--panel); font-weight: 700; padding: 6px; cursor: pointer; letter-spacing: .06em; }
+.box { border: 2px solid var(--frame); background: var(--panel); padding: 8px; }
+.rwy { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; width: 100%; border: 0; background: transparent; padding: 0; cursor: pointer; text-align: left; }
+.rwy-l { font-size: 12px; font-weight: 700; }
+.rwy-v { grid-row: span 2; justify-self: end; border: 2px solid var(--frame); padding: 2px 18px; font: 700 28px var(--font-ui); font-variant-numeric: tabular-nums; }
+.rwy-auto { font-size: 10px; color: var(--muted); align-self: end; }
+.len { display: flex; align-items: center; gap: 8px; margin-top: 10px; font: 12px var(--font-mono); }
+.len input { flex: 1; min-width: 0; accent-color: var(--frame); }
+.holdbox { min-height: 120px; display: flex; flex-direction: column; gap: 6px; }
+.holdbox.over { outline: 2px dashed var(--miles); outline-offset: -6px; }
+.hold-title { font-size: 11px; color: var(--muted); letter-spacing: .1em; }
+.hold-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; flex: 1; font: 15px var(--font-mono); }
+.hold-list li { padding: 2px 4px; border: 1px solid var(--muted); }
+.btn-small { border: 2px solid var(--frame); background: var(--panel); padding: 4px 8px; font-size: 11px; font-weight: 700; letter-spacing: .06em; cursor: pointer; }
+
+.stats table { width: 100%; border-collapse: collapse; border: 2px solid var(--frame); font: 12px var(--font-mono); font-variant-numeric: tabular-nums; background: var(--panel); }
+.stats th, .stats td { border: 1px solid var(--frame); padding: 2px 4px; text-align: right; }
+.stats th { font-weight: 700; text-align: center; }
+.stats td.k { text-align: left; font-weight: 700; }
+.status { font: 11px var(--font-mono); color: var(--muted); line-height: 1.5; }
+.status b { color: var(--fg); font-weight: 400; }
+
+/* ---------- Einstellungen ---------- */
+.sheet { position: fixed; inset: 0; z-index: 100; background: rgb(0 0 0 / .55); display: flex; justify-content: flex-end; }
+.sheet-inner {
+  width: min(420px, 100%); height: 100%; overflow-y: auto; box-sizing: border-box; background: var(--panel); border-left: 2px solid var(--frame);
+  padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) 16px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.sheet-head { display: flex; justify-content: space-between; align-items: center; }
+.sheet h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.sheet section { display: flex; flex-direction: column; gap: 6px; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.row label { font-size: 13px; }
+.row select, .row input { background: var(--bg); border: 1px solid var(--frame); padding: 4px 6px; max-width: 60%; }
+.row input { width: 80px; }
+.cl-list { list-style: none; padding: 0; margin: 0; font: 12px var(--font-mono); display: flex; flex-direction: column; gap: 4px; }
+.cl-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.hint { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0; }
+
+/* Telefon: Bedienleiste unter den Schirm */
+@media (max-width: 760px) {
+  body { height: auto; }
+  .app { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .scope { height: 78vh; min-height: 520px; }
+  .cols.app-view { grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr); }
+  .cols.ctr-view { grid-template-columns: minmax(0, 1fr) 44px; }
+  .label { font-size: 13px; height: 22px; gap: 3px; }
+  .label .mi { font-size: 12px; }
+  .label .st { width: 6px; height: 16px; }
+  .tag { font-size: 12px; padding: 1px 5px; }
+  .flow input { width: 44px; font-size: 16px; }
+  .flow span { font-size: 9px; padding: 3px 4px; }
+  .clock { font-size: 13px; height: 32px; }
+  .side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .btn-exit, .status { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* Hold-Liste: ziehbar wie Labels */
+.hold-list li.editable { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.hold-list li.dragging { position: fixed; z-index: 50; cursor: grabbing; background: var(--label-bg); border-color: var(--miles); }
+.hold-list li:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.col.over { outline: 2px dashed var(--miles); outline-offset: -4px; }
+.label { cursor: pointer; }
+
+/* Detail-Info zum Flieger */
+.detail {
+  position: fixed; z-index: 80; width: 260px; max-width: calc(100vw - 16px); box-sizing: border-box;
+  background: var(--panel); border: 2px solid var(--frame); padding: 8px 10px 10px; font: 13px var(--font-mono);
+  box-shadow: 0 6px 24px rgb(0 0 0 / .35);
+}
+.detail:focus { outline: none; }
+.detail-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.detail-head strong { font-size: 17px; letter-spacing: .03em; }
+.detail dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
+.detail dt { color: var(--muted); }
+.detail dd { margin: 0; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.detail-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.detail-acts .btn-small { flex: 1 1 auto; }
