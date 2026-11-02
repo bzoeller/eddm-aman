@@ -89,7 +89,7 @@ APP-Holdings (in `eddm.json` unter `holdings`): ROKIL 126 R, LANDU 213 L, NAPSA 
 - Daten vom Plugin werden geprüft: kaputte Datensätze werden verworfen, Callsigns und Texte werden nie als HTML eingesetzt. Abfrage mit 4 s Timeout, eine ältere Antwort überschreibt nie eine neuere. Kommen länger als 15 s keine Daten, steht groß „DATA STALE“ am Schirm und die Labels werden ausgegraut.
 - Durchstart: Ein schon als gelandet gezählter Flieger, der wieder steigt, wird neu eingeplant und nicht mehr als Landung gezählt. Ein einzelner leerer Datentakt kurz vor der Schwelle löscht keinen Flieger mehr.
 - Gespeicherte Einstellungen aus älteren Versionen werden geprüft, ungültige Werte durch Standardwerte ersetzt.
-- In der CTR-Ansicht gibt es je Minute Delay einen Balken, bis 10 min (`ctrMaxDelayMin`). Ein rotes „+“ zeigt, dass mehr als 10 min nötig sind. Eine leere CTR-Ansicht zeigt „keine Anfluege“. Passen oben nicht alle Labels auf den Zeitstrahl, zeigt „▲ +N“ die Zahl der übrigen.
+- In der CTR-Ansicht gibt es je Minute Delay einen Balken, bis 10 min (`ctrMaxDelayMin`). Ein rotes „+“ zeigt, dass mehr als 10 min nötig sind. Eine leere CTR-Ansicht zeigt „keine Anfluege“.
 - In der Simulation steht „SIM“ an der Uhr.
 
 ## Downwind und Final

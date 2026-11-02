@@ -337,13 +337,11 @@
       if (fx1 > labLeft && fx0 < labRight) prevTop = Math.min(prevTop, c.flowEl.offsetTop - 6);
     }
     const sorted = items.slice().sort((a, b) => a._t - b._t);
-    let shown = 0;
     for (const it of sorted) {
       const ideal = g.y(it._t);
       if (ideal < g.top) break;
       let cy = Math.min(ideal, prevTop - LH / 2 - GAP);
-      if (cy < g.top + LH / 2) break; // kein Platz mehr: Label liegt jenseits des Zeitstrahls
-      shown++;
+      if (cy < g.top + LH / 2) break; // kein Platz mehr: Label liegt jenseits des Zeitstrahls und laeuft spaeter rein
       const gapMin = prevT == null ? 99 : (it._t - prevT) / 60;
       const bent = gapMin < cfg.defaults.bentLineBelowMin || Math.abs(cy - ideal) > 1;
       prevTop = cy - LH / 2; prevT = it._t;
@@ -403,14 +401,6 @@
     }
     for (const cs of Object.keys(c.labels)) if (!keep[cs]) { c.labels[cs].remove(); delete c.labels[cs]; }
     c.svg.querySelector('.ln').innerHTML = lines;
-    // Ueberlauf: Flieger, die oben nicht mehr auf den Zeitstrahl passen
-    const over = sorted.length - shown;
-    let om = c.el.querySelector('.overflow');
-    if (!om) { om = document.createElement('div'); om.className = 'overflow'; c.el.appendChild(om); }
-    om.textContent = over > 0 ? '\u25B2 +' + over : '';
-    om.hidden = over <= 0;
-    // in die freie Ecke oben, weg vom static-Tag am Zeitstrahl
-    om.style[pointsRight ? 'left' : 'right'] = '8px';
     // leere Ansicht von einem Ausfall unterscheiden
     let em = c.el.querySelector('.empty');
     if (!em) { em = document.createElement('div'); em.className = 'empty'; c.el.appendChild(em); }

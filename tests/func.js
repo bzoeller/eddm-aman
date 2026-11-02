@@ -172,7 +172,7 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
     Object.defineProperty(window, 'AmanSim', {
       configurable: true,
       get() { return real; },
-      set(v) { real = { createSim: (c, o) => { const x = v.createSim(c, o); const t = x.traffic; x.traffic = () => { const d = Object.assign(t(), { activeDir: '08' }); if (d.aircraft[0]) d.aircraft[0] = Object.assign({}, d.aircraft[0], { cs: '<img src=x onerror=window.__xss=1>' }); return d; }; return x; } }; }
+      set(v) { real = { createSim: (c, o) => { const x = v.createSim(c, o); const t = x.traffic; x.traffic = () => { const d = Object.assign(t(), { activeDir: '08' }); const k = d.aircraft.findIndex(a => a.passedIaf); if (k >= 0) d.aircraft[k] = Object.assign({}, d.aircraft[k], { cs: '<img src=x onerror=window.__xss=1>' }); return d; }; return x; } }; }
     });
   });
   await w.goto(URL); await w.waitForTimeout(1500);
