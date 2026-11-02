@@ -21,6 +21,8 @@ Die Oberfläche ist englisch, diese Anleitung deutsch.
 
 ## CTR-Ansichten und Ströme
 
+Die Ansicht wird beim Öffnen immer automatisch nach dem Login gewählt (siehe Tabelle). Eine Auswahl von Hand (MENU oder unten rechts) gilt, bis die Seite neu geladen wird. In der CTR-Ansicht steht jedes Label auf der geplanten Überflugzeit am IAF, die Balken zeigen die Minuten, die bis dorthin verloren werden müssen.
+
 | Ansicht | Callsign | zeigt |
 |---|---|---|
 | CTR NDG (ROKIL) | `EDMM_NDG_CTR` | Anflüge über ROKIL |
@@ -56,6 +58,7 @@ In der hellen Version (MENU → Theme) wird weiße Schrift schwarz, Gelb und Wei
 - `static` / `dynamic`: Planung vor dem IAF einfrieren oder laufen lassen.
 - FLOW: Abstand in NM pro Bahn.
 - Klick auf den RWY-Kasten: Runway Change und Bahnsperre (siehe unten).
+- Unten rechts: Schnellauswahl für den Sektor (AUTO, APP, TWR, NDG, RDG, FUE, STA, FUE+STA, LOVV_B) und DAY oder NIGHT.
 - MENU: Einstellungen (Datenquelle, Ansicht, Darstellung hell oder dunkel, Staffelung, Simulation).
 - UNDO (oder Strg+Z): nimmt den letzten Eingriff zurück (Verschieben, HOLD, CHANGE RWY, RECOMPUTE, static/dynamic, Sperre, Runway Change).
 
@@ -68,7 +71,7 @@ Beides stellt APP über einen Klick auf den RWY-Kasten ein. Alle Zeiten sind UTC
   - Wer nach dem Zeitpunkt landet, wird schon jetzt auf die neue Richtung geplant: Pfad, Restweg und Zeiten gelten für die neue Bahn. Erst landen alle Anflüge der alten Richtung (auf beiden Bahnen). Der erste Flieger der neuen Richtung ist erst bei 15 NM, wenn die letzte Landung der alten Richtung erfolgt ist, plus `rwyChangeBufferSec` (30 s) Puffer. Vor dem Zeitpunkt landet niemand in der neuen Richtung.
   - Flieger, die schon hinter dem IAF sind, behalten ihre Richtung.
   - Zum Zeitpunkt wechselt das AMAN automatisch die Richtung, und die Linie verschwindet. „DELETE“ nimmt einen geplanten Wechsel zurück. Beim Wechsel blinkt die neue Richtung im RWY-Kasten 10 Sekunden lang.
-  - Die Betriebsrichtung kommt nur aus dem AMAN. Eine gedrehte Bahn in EuroScope ändert am AMAN nichts. Weicht sie ab, steht am Rand rot `RWY MISMATCH: EuroScope 08, AMAN 26`.
+  - Beim Öffnen übernimmt der AMAN einmalig die aktive Richtung aus EuroScope. Danach kommt die Betriebsrichtung nur aus dem AMAN. Eine gedrehte Bahn in EuroScope ändert am AMAN nichts. Weicht sie ab, steht am Rand rot `RWY MISMATCH: EuroScope 08, AMAN 26`.
 - **Bahnsperre:** North, South oder Both, Beginn „now“ oder „at HH:MM“, Ende „Until HH:MM“. Gesperrte Zeiten sind orange schraffiert, Anflüge weichen auf die andere Bahn aus oder werden hinter die Sperre geplant. Aufheben geht in der Liste im Dialog (LIFT) oder per „LIFT CLOSURE“ am Schirm.
 
 ## Bahn aus EuroScope und Wechsel auf den anderen Downwind

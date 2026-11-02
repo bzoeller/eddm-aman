@@ -164,6 +164,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 .stats th, .stats td { border: 2px solid var(--frame-lo); padding: 3px 5px; text-align: right; }
 .stats th { text-align: center; }
 .stats td.k { text-align: center; }
+/* Schnellauswahl unten rechts: Sektor und Tag/Nacht */
+.quick { margin-top: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.quick select { background: var(--panel); color: var(--fg); border: 3px solid var(--frame); font: 700 15px var(--font-ui); padding: 4px 6px; min-width: 0; cursor: pointer; }
 .status { font: 12px var(--font-mono); color: var(--muted); line-height: 1.5; }
 .status b { color: var(--fg); font-weight: 400; }
 
@@ -263,7 +266,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
   .flow span { font-size: 9px; padding-right: 4px; }
   .clock { font-size: 14px; height: 34px; }
   .side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding-left: 0; }
-  .btn-exit, .dirwarn { grid-column: 1 / -1; }
+  .btn-exit, .dirwarn, .quick { grid-column: 1 / -1; }
   .label .strokes i { width: 5px; }
   .holdbox { margin-top: 0; min-height: 120px; }
 }

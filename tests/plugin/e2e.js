@@ -36,7 +36,26 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   cmd('ESRWY 08L 08R');
   await wait(7000);
   ok((await p.textContent('#rwyVal')) === '26' && /EuroScope 08, AMAN 26/.test(await p.textContent('#dirWarn')), 'EuroScope 08: AMAN bleibt 26, Warnung: ' + (await p.textContent('#dirWarn')));
+  // Neu laden, waehrend EuroScope auf 08 steht: AMAN uebernimmt einmalig 08, danach dreht er nicht mehr mit
+  await p.reload(); await wait(6500);
+  ok((await p.textContent('#rwyVal')) === '08' && !(await p.isVisible('#dirWarn')), 'beim Laden einmalig 08 aus EuroScope uebernommen');
   cmd('ESRWY 26L 26R');
+  await wait(7000);
+  ok((await p.textContent('#rwyVal')) === '08' && /EuroScope 26, AMAN 08/.test(await p.textContent('#dirWarn')), 'danach dreht EuroScope nicht mehr mit: ' + (await p.textContent('#dirWarn')));
+  // zurueck auf 26 fuer die folgenden Tests (wie ein Lotse im AMAN)
+  await p.click('#btnRwy'); await p.click('#chDir button[data-dir="26"]'); await p.check('input[name=chWhen][value=now]');
+  await p.click('#btnChSet'); await p.click('#btnChSet'); await p.keyboard.press('Escape'); await wait(1500);
+  ok((await p.textContent('#rwyVal')) === '26', 'AMAN von Hand zurueck auf 26');
+
+  // Ansicht nach Login: CTR-Login bekommt nach dem Neuladen automatisch seine Ansicht, auch nach Hand-Auswahl
+  await p.click('#btnMenu'); await p.selectOption('#selView', 'TWR'); await p.click('#btnClose');
+  cmd('ME EDMM_STA_CTR');
+  await p.reload(); await wait(6500);
+  // FUE ist im Testaufbau nicht eingeloggt: STA arbeitet beide BETOS-Stroeme (combined)
+  ok(/combined/.test(await p.textContent('#frameTitle')), 'EDMM_STA_CTR ohne FUE online: Ansicht automatisch ' + (await p.textContent('#frameTitle')));
+  cmd('ME EDDM_N_APP');
+  await wait(6500);
+  ok(/AMAN EDDM APP/.test(await p.textContent('#frameTitle')), 'Login wechselt zu EDDM_N_APP: Ansicht folgt ' + (await p.textContent('#frameTitle')));
 
   // Lotse aendert die Bahn eines Sued-Fliegers auf 26R (gleiche Richtung) -> springt auf Nord
   const s1 = (await p.$$eval('.col.S .label', l => l.map(x => x.dataset.cs)))[2];

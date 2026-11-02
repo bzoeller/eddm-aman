@@ -29,6 +29,13 @@ Schritte:
 
 Hinweis: Den Plugin-Code habe ich unter Linux gegen einen Nachbau der EuroScope-Schnittstelle gebaut und mit dem AMAN im Browser getestet (`tests/plugin/run.sh`). Gegen das echte SDK unter Windows ist er noch nicht gebaut worden. Falls der Compiler beim ersten Bauen über einzelne Funktionen meckert, schick mir die Fehlermeldung.
 
+## Neue Version einspielen
+
+1. Neue ZIP von GitHub laden und über den Repo-Ordner entpacken (Dateien ersetzen). Der Ordner `plugin\sdk` bleibt erhalten.
+2. In der „Developer PowerShell for VS 2022/2026“ im Repo-Ordner: `cmake --build build --config Release`. Das kopiert auch die Webseite neu nach `build\Release\web`.
+3. Den Ordner `build\Release\web` an den Plugin-Ort kopieren (Dateien ersetzen), dann die AMAN-Seite im Browser neu laden (F5).
+4. Nur wenn sich die DLL geändert hat: EuroScope schließen, `EDDM-AMAN.dll` ersetzen, EuroScope starten. Solange EuroScope läuft, ist die DLL gesperrt.
+
 ## Installieren und öffnen
 
 1. Kopiere `EDDM-AMAN.dll` und den Ordner `web` zusammen an einen festen Ort, z. B. `Dokumente\EuroScope\Plugins\EDDM-AMAN\`.

@@ -39,18 +39,31 @@
     cfg = c;
     const saved = load();
     if (saved && saved.settings) Object.assign(settings, saved.settings);
+    // Ansicht beim Oeffnen immer automatisch nach Login; eine Hand-Auswahl gilt nur bis zum Neuladen
+    settings.view = 'auto';
     if (!isPluginHost && settings.source === 'plugin') settings.source = 'sim';
     engine = AmanCore.createEngine(cfg, saved && saved.engine ? Object.assign({}, saved.engine, { closures: (saved.engine.closures || []).filter(c => c.to > Date.now() / 1000), dirChange: saved.engine.dirChange && saved.engine.dirChange.at > Date.now() / 1000 ? saved.engine.dirChange : null }) : null);
     applyTheme();
     const sel = $('selView');
-    for (const v of cfg.ctrViews || []) { const o = document.createElement('option'); o.value = v.id; o.textContent = v.label; sel.appendChild(o); }
+    for (const v of cfg.ctrViews || []) {
+      const o = document.createElement('option'); o.value = v.id; o.textContent = v.label; sel.appendChild(o);
+      // Schnellauswahl unten rechts: nur die Sektorbezeichnung
+      const q = document.createElement('option'); q.value = v.id; q.textContent = v.sector; $('qView').appendChild(q);
+    }
     if (settings.view !== 'auto' && !['APP', 'TWR'].includes(settings.view) && !ctrView(settings.view)) settings.view = 'auto';
     bindUi();
+    syncQuick();
     startSource();
   }).catch(err => {
     $('status').textContent = 'Configuration eddm.json not found: ' + err.message;
   });
 
+  /** Schnellauswahl unten rechts mit den Einstellungen abgleichen. */
+  function syncQuick() {
+    $('qView').value = settings.view;
+    const dark = settings.theme === 'dark' || (settings.theme === 'system' && !(window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches));
+    $('qTheme').value = dark ? 'dark' : 'light';
+  }
   function applyTheme() {
     const r = document.documentElement;
     if (settings.theme === 'system') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', settings.theme || 'dark');
@@ -107,6 +120,16 @@
       const rw = Array.isArray(d.arrRwys) ? d.arrRwys.map(String) : [];
       traffic = { aircraft: Array.isArray(d.aircraft) ? d.aircraft : [], activeDir: rw.some(r => /^08/.test(r)) ? '08' : (rw.some(r => /^26/.test(r)) ? '26' : null) };
       dataTime = typeof d.time === 'number' && isFinite(d.time) ? d.time : Date.now() / 1000;
+      // Beim ersten Laden einmalig die Betriebsrichtung aus EuroScope uebernehmen, danach nie wieder
+      if (!pollPlugin.dirSynced && traffic.activeDir) {
+        pollPlugin.dirSynced = true;
+        if (engine.state.dir !== traffic.activeDir || engine.state.dirChange) {
+          engine.state.dirChange = null;
+          engine.setDirChange(traffic.activeDir, null);
+          render.dir = null; // kein Blinken fuer diese Startuebernahme
+          save();
+        }
+      }
       // veraltet zaehlt ab dem Zeitstempel der Daten: so faellt auch ein haengendes EuroScope auf
       lastData = typeof d.time === 'number' && isFinite(d.time) ? Math.min(Date.now(), d.time * 1000) : Date.now(); connErr = null;
       tick();
@@ -712,8 +735,10 @@
     });
 
     $('selSource').addEventListener('change', e => { settings.source = e.target.value; save(); startSource(); syncSheet(); });
-    $('selTheme').addEventListener('change', e => { settings.theme = e.target.value; applyTheme(); save(); });
-    $('selView').addEventListener('change', e => { settings.view = e.target.value; save(); tick(); });
+    $('selTheme').addEventListener('change', e => { settings.theme = e.target.value; applyTheme(); syncQuick(); save(); });
+    $('selView').addEventListener('change', e => { settings.view = e.target.value; syncQuick(); save(); tick(); });
+    $('qView').addEventListener('change', e => { settings.view = e.target.value; $('selView').value = settings.view; save(); tick(); });
+    $('qTheme').addEventListener('change', e => { settings.theme = e.target.value; $('selTheme').value = settings.theme; applyTheme(); save(); });
     $('selGs').addEventListener('change', e => { engine.state.finalGsMode = e.target.value; save(); tick(); });
     $('rateN').addEventListener('change', e => { engine.state.rate.N = clampRate(e.target.value); save(); tick(); });
     $('rateS').addEventListener('change', e => { engine.state.rate.S = clampRate(e.target.value); save(); tick(); });

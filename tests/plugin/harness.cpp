@@ -18,6 +18,7 @@ static void load(const std::string& file) {
     std::vector<EuroScopePlugIn::FakeTarget> v;
     std::string line;
     while (std::getline(f, line)) {
+        if (line.rfind("#ME ", 0) == 0) { world().me = line.substr(4); continue; }
         if (line.rfind("#RWY", 0) == 0) { std::istringstream r(line.substr(4)); std::string x; world().arrRwys.clear(); while (r >> x) world().arrRwys.push_back(x); continue; }
         std::vector<std::string> c;
         std::istringstream ss(line);
