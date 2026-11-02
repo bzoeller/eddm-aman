@@ -170,8 +170,17 @@
     return null;
   }
 
-  /** Strom nach Peilung vom IAF zum Flieger, Bereiche [from, to) in Grad. Ohne Bereiche: unbekannt. */
+  /**
+   * Strom nach Peilung vom IAF zum Flieger: Bereich [from, to) in Grad, oder der Einflugpunkt (fix),
+   * dessen Peilung vom IAF am naechsten liegt (hoechstens 45 Grad daneben). Sonst unbekannt.
+   */
   function streamFor(streams, brg) {
+    const withFix = Object.keys(streams).filter(k => streams[k]._brg != null);
+    if (withFix.length) {
+      let best = null, bd = 46;
+      for (const k of withFix) { const d = Math.abs(((brg - streams[k]._brg) % 360 + 540) % 360 - 180); if (d < bd) { bd = d; best = k; } }
+      return best;
+    }
     const keys = Object.keys(streams).filter(k => streams[k].from != null && streams[k].to != null);
     for (const k of keys) {
       const z = streams[k];
@@ -207,6 +216,11 @@
 
     const iafXY = {};
     for (const k of Object.keys(cfg.iafs)) iafXY[k] = proj.xy(cfg.iafs[k].lat, cfg.iafs[k].lon);
+    // Peilung IAF -> Einflugpunkt je Strom (fuer Fluege ohne Route)
+    for (const k of Object.keys(cfg.iafs)) {
+      const st0 = cfg.iafs[k].streams || {};
+      for (const n of Object.keys(st0)) if (st0[n].fix) st0[n]._brg = trackDeg(iafXY[k], proj.xy(st0[n].fix.lat, st0[n].fix.lon));
+    }
 
     function rwyId(side, dir) { return cfg.runways[side].ids[dir]; }
     function closedAt(side, t) {

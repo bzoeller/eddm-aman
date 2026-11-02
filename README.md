@@ -22,7 +22,7 @@ Danach im Browser `http://localhost:8090/` öffnen. Ohne EuroScope läuft automa
 | Ansicht | Callsign | zeigt |
 |---|---|---|
 | CTR NDG (ROKIL) | `EDMM_NDG_CTR` | Anflüge über ROKIL |
-| CTR RDG (LANDU) | `EDMM_RDG_CTR` | Anflüge über LANDU |
+| CTR RDG (LANDU) | `EDMM_RDG_CTR` | LANDU-Ströme LULAR T105, NIRGO T108, VESUB T106 |
 | CTR FUE | `EDMM_FUE_CTR` | BETOS-Strom DISUN T103 |
 | CTR STA | `EDMM_STA_CTR` | BETOS-Strom SOTOV T101 |
 | CTR FUE+STA combined | FUE oder STA, wenn der andere Sektor nicht besetzt ist | beide BETOS-Ströme |
@@ -32,12 +32,15 @@ Label-Farben (Box = IAF, Schrift = Strom):
 
 | Strom | Box | Schrift |
 |---|---|---|
+| LULAR T105 LANDU | blau | weiß |
+| NIRGO T108 LANDU | blau | weiß |
+| VESUB T106 LANDU | blau | weiß |
 | DISUN T103 BETOS | gelb | weiß |
 | SOTOV T101 BETOS | gelb | gelb |
 | AMADI Q113 NAPSA | rot | weiß |
 | REDBU Q112 NAPSA | rot | rot |
 
-Den Strom erkennt das AMAN aus der Flugplanroute (Feld `route`, z. B. `... DISUN T103 BETOS`). Fehlt die Route, schätzt es den Strom bei BETOS aus der Peilung vom IAF (DISUN 220° bis 360°, SOTOV 90° bis 220°, einstellbar in `eddm.json` unter `iafs.BETOS.streams`). Bei NAPSA gibt es keine Schätzung: Ohne Route bleibt die Schrift weiß. Combined wird automatisch gewählt, wenn das Plugin `controllers` liefert. Sonst stellt man die Ansicht im Menü (EXIT) fest ein.
+Den Strom erkennt das AMAN aus der Flugplanroute (Feld `route`, z. B. `... DISUN T103 BETOS`). Fehlt die Route, schätzt es den Strom bei BETOS aus der Peilung vom IAF (DISUN 220° bis 360°, SOTOV 90° bis 220°, einstellbar in `eddm.json` unter `iafs.BETOS.streams`). Bei NAPSA nimmt es den Einflugpunkt, dessen Peilung vom IAF am besten passt (AMADI 098°, REDBU 121°, Koordinaten unter `fix`). Bei LANDU geht es nur über die Route, solange die Koordinaten von LULAR, NIRGO und VESUB fehlen. Combined wird automatisch gewählt, wenn das Plugin `controllers` liefert. Sonst stellt man die Ansicht im Menü (EXIT) fest ein.
 
 In der hellen Version (EXIT → Darstellung) wird weiße Schrift schwarz, Gelb und Weiß werden für den Kontrast abgedunkelt.
 

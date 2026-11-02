@@ -17,9 +17,10 @@
   // Einflugrichtungen je IAF (Peilung vom IAF aus); BETOS hat zwei Stroeme: West (FUE) und Sued (STA)
   // je Eintrag: Peilung vom IAF und Route (wie im Flugplan); BETOS und NAPSA haben je zwei Stroeme
   const INBOUND = {
-    ROKIL: [[300, 'ROKIL']], LANDU: [[25, 'LANDU']],
+    ROKIL: [[300, 'ROKIL']],
+    LANDU: [[15, 'LULAR T105 LANDU'], [35, 'NIRGO T108 LANDU'], [60, 'VESUB T106 LANDU']],
     BETOS: [[265, 'DISUN T103 BETOS'], [265, 'DISUN T103 BETOS'], [190, 'SOTOV T101 BETOS']],
-    NAPSA: [[80, 'AMADI Q113 NAPSA'], [110, 'REDBU Q112 NAPSA']]
+    NAPSA: [[98, 'AMADI Q113 NAPSA'], [121, 'REDBU Q112 NAPSA']]
   };
   const WEIGHT = { ROKIL: 0.3, LANDU: 0.2, BETOS: 0.3, NAPSA: 0.2 };
 
