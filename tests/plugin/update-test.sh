@@ -5,9 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORK="$(mktemp -d)"; fails=0
 ok() { if [ "$1" = 1 ]; then echo "PASS $2"; else echo "FAIL $2"; fails=$((fails+1)); fi; }
-g++ -std=c++17 -Wall -Wextra -Werror -O1 -I "$ROOT/tests/plugin/es_stub" -I "$ROOT/plugin/src" \
-  "$ROOT/plugin/src/AmanPlugin.cpp" "$ROOT/plugin/src/HttpServer.cpp" "$ROOT/plugin/src/PluginMain.cpp" "$ROOT/plugin/src/Updater.cpp" \
-  -DAMAN_TEST_BUILD -DAMAN_VERSION="\"1.0.0\"" "$ROOT/tests/plugin/harness.cpp" -lpthread -o "$WORK/harness"
+"$ROOT/tests/plugin/build.sh" "$WORK/harness" -DAMAN_VERSION="\"1.0.0\""
 
 release() {  # $1 = Pruefsumme der DLL ueberschreiben (bad) oder leer
   rm -rf "$WORK/srv"; mkdir -p "$WORK/srv/releases/latest/download" "$WORK/srv/releases/download/v9.9.9"
@@ -18,8 +16,8 @@ release() {  # $1 = Pruefsumme der DLL ueberschreiben (bad) oder leer
   printf 'version 9.9.9\nweb index.html %s\ndll EDDM-AMAN.dll %s\n' "$isum" "$dsum" > "$WORK/srv/releases/latest/download/manifest.txt"
 }
 setup_plugin() {
-  rm -rf "$WORK/plugin"; mkdir -p "$WORK/plugin/web"
-  cp "$ROOT"/index.html "$ROOT"/app.js "$ROOT"/aman-core.js "$ROOT"/aman-sim.js "$ROOT"/eddm.json "$ROOT"/style.css "$WORK/plugin/web/"
+  rm -rf "$WORK/plugin"; mkdir -p "$WORK/plugin"
+  cp -r "$ROOT/web" "$WORK/plugin/"
   echo "ALTE DLL 1.0.0" > "$WORK/plugin/EDDM-AMAN.dll"
   : > "$WORK/traffic.txt"
 }

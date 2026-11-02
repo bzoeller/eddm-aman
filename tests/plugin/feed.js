@@ -2,7 +2,7 @@
 // Aufruf: node tests/plugin/feed.js <verkehrsdatei> [tempo]
 // Steuerdatei <verkehrsdatei>.cmd: Zeilen "RWY <cs> <bahn>" (Lotse aendert Bahn), "ESRWY <bahnen...>" (aktive Bahnen in EuroScope)
 const fs = require('fs'), path = require('path');
-const root = path.join(__dirname, '..', '..');
+const root = path.join(__dirname, '..', '..', 'web');
 const Core = require(path.join(root, 'aman-core.js')), Sim = require(path.join(root, 'aman-sim.js'));
 const cfg = require(path.join(root, 'eddm.json'));
 const file = process.argv[2], speed = +(process.argv[3] || 1);

@@ -74,8 +74,8 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force dist/web | Out-Null
           Copy-Item build/Release/EDDM-AMAN.dll dist/
-          $web = 'index.html','app.js','aman-core.js','aman-sim.js','eddm.json','style.css'
-          foreach ($f in $web) { Copy-Item $f dist/web/ }
+          Copy-Item web/* dist/web/
+          $web = Get-ChildItem dist/web -File | ForEach-Object { $_.Name }
           $lines = @("version $env:VERSION")
           $lines += "dll EDDM-AMAN.dll " + (Get-FileHash dist/EDDM-AMAN.dll -Algorithm SHA256).Hash.ToLower()
           foreach ($f in $web) { $lines += "web $f " + (Get-FileHash "dist/web/$f" -Algorithm SHA256).Hash.ToLower() }

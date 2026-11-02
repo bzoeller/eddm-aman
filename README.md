@@ -23,7 +23,7 @@ Arrival Manager für München (EDDM) als Browser-Anzeige im Look des AMAN-Schirm
 Die Seite braucht einen kleinen Webserver, weil sie `eddm.json` per `fetch` lädt. Im Repo-Ordner:
 
 ```bash
-python3 -m http.server 8090
+python3 -m http.server 8090 -d web
 ```
 
 Danach im Browser `http://localhost:8090/` öffnen. Ohne EuroScope läuft automatisch der Simulationsmodus.
@@ -124,12 +124,12 @@ Der Streifen steht immer auf der geplanten Zeit mit voller Staffelung (FLOW, Wir
 
 | Datei | Inhalt |
 |---|---|
-| `index.html` | Seite |
-| `app.js` | Anzeige, Bedienung, Datenquellen |
-| `aman-core.js` | Rechenkern (ETA, Sequenz, Staffelung), läuft auch in Node |
-| `aman-sim.js` | Simulationsmodus |
-| `eddm.json` | Flughafendaten: Bahnen, IAFs, Pfade, Speedprofil, Wirbelschleppen |
-| `style.css` | Darstellung, dunkel und hell |
+| `web/index.html` | Seite |
+| `web/app.js` | Anzeige, Bedienung, Datenquellen |
+| `web/aman-core.js` | Rechenkern (ETA, Sequenz, Staffelung), läuft auch in Node |
+| `web/aman-sim.js` | Simulationsmodus |
+| `web/eddm.json` | Flughafendaten: Bahnen, IAFs, Pfade, Speedprofil, Wirbelschleppen |
+| `web/style.css` | Darstellung, dunkel und hell |
 | `tests/func.js` | Browsertest mit Playwright |
 | `plugin/` | EuroScope-Plugin (C++): liest den Verkehr aus EuroScope, liefert AMAN-Seite und `/api/traffic` |
 | `tests/plugin/run.sh` | Plugin-Test unter Linux mit dem AMAN im Browser im Plugin-Modus |
@@ -138,7 +138,7 @@ Der Streifen steht immer auf der geplanten Zeit mit voller Staffelung (FLOW, Wir
 ## Test
 
 ```bash
-python3 -m http.server 8090 &
+python3 -m http.server 8090 -d web &
 node tests/func.js
 ```
 

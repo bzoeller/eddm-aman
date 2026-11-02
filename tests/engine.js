@@ -1,6 +1,6 @@
 // Rechenkern-Test mit der Simulation (ohne Browser). Aufruf: node tests/engine.js
 const path = require('path');
-const root = path.join(__dirname, '..');
+const root = path.join(__dirname, '..', 'web');
 const Core = require(path.join(root, 'aman-core.js'));
 const Sim = require(path.join(root, 'aman-sim.js'));
 const cfg = require(path.join(root, 'eddm.json'));

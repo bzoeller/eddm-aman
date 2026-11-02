@@ -29,10 +29,7 @@ target_compile_definitions(EDDM-AMAN PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX AM
 set_property(TARGET EDDM-AMAN PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # AMAN-Webseite in den Ordner "web" neben die DLL kopieren, bei jedem Build (auch wenn sich nur die Seite aendert)
-set(WEB_FILES index.html app.js aman-core.js aman-sim.js eddm.json style.css)
-set(WEB_CMDS COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:EDDM-AMAN>/web")
-foreach(f ${WEB_FILES})
-  list(APPEND WEB_CMDS COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/../${f}" "$<TARGET_FILE_DIR:EDDM-AMAN>/web/${f}")
-endforeach()
-add_custom_target(aman-web ALL ${WEB_CMDS} COMMENT "AMAN-Webseite nach web kopieren")
+add_custom_target(aman-web ALL
+  COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../web" "$<TARGET_FILE_DIR:EDDM-AMAN>/web"
+  COMMENT "AMAN-Webseite nach web kopieren")
 add_dependencies(aman-web EDDM-AMAN)
