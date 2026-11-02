@@ -245,7 +245,6 @@
     /** Verkehrsbild im gleichen Format wie vom EuroScope-Plugin. */
     function traffic() {
       return {
-        source: 'sim',
         // keine activeDir: in der Simulation gibt es kein EuroScope, das eine Richtung melden koennte
         aircraft: sim.aircraft.map(a => {
           const p = proj.ll(a.x, a.y);

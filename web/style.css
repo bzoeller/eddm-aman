@@ -133,7 +133,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 .rwy { display: grid; grid-template-columns: auto 1fr; width: 100%; border: 0; background: transparent; padding: 0; cursor: pointer; text-align: left; align-items: start; }
 .rwy-l { font: 700 17px var(--font-ui); }
 .rwy-v { justify-self: end; border: 3px solid var(--frame); padding: 4px 22px; min-width: 64px; text-align: center; font: 700 36px var(--font-ui); font-variant-numeric: tabular-nums; }
-.rwy-auto { font-size: 10px; color: var(--muted); }
 /* neue Betriebsrichtung blinkt nach dem Wechsel 10 s lang */
 .rwy-v.blink { animation: rwyblink 1s steps(1, end) 10; }
 @keyframes rwyblink { 0% { color: var(--fg); } 50% { color: transparent; } }

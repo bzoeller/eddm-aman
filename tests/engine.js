@@ -73,7 +73,7 @@ for (const D of ['26', '08']) {
     sim.setRunway(c.cs, '08L');
     let first = null, onDw = null, landed = null, rwy = null;
     for (let i = 0; i < 1500 && !landed; i++) {
-      if (i % 2 === 0) { const it = eng.update(sim.traffic(), sim.sim.t, sim.sim.wind).byCs[c.cs]; if (it) { if (!first) first = it; if (!it.xfer && !onDw) onDw = Object.assign({}, it); } }
+      if (i % 2 === 0) { const it = eng.update(sim.traffic(), sim.sim.t, sim.sim.wind).byCs[c.cs]; if (it) { if (!first) first = it; if (eng.state.ac[c.cs].xOn && !onDw) onDw = Object.assign({}, it); } }
       const a = sim.sim.aircraft.find(x => x.cs === c.cs); if (a) rwy = a.rwy;
       sim.step(2, eng.last);
       if (!sim.sim.aircraft.find(x => x.cs === c.cs)) landed = sim.sim.t;

@@ -19,7 +19,7 @@
   let traffic = { aircraft: [] }, me = null, metar = null, aloft = null, lastData = 0, connErr = null, dataTime = null;
   let pollSeq = 0, pollTimer = null, aloftTimer = null;
   let curView = null, colEls = {}, drag = null, timer = null, lastTick = 0, online = null;
-  const refreshMs = () => 1000 * ((cfg && cfg.defaults.refreshSec) || 5);
+  const refreshMs = () => 1000 * cfg.defaults.refreshSec;
 
   // ---------- Speicher ----------
   function load() {
@@ -55,7 +55,7 @@
     syncQuick();
     startSource();
   }).catch(err => {
-    $('status').textContent = 'Configuration eddm.json not found: ' + err.message;
+    $('status').textContent = 'Configuration error: ' + err.message;
   });
 
   /** Schnellauswahl unten rechts mit den Einstellungen abgleichen. */
@@ -96,7 +96,7 @@
 
   function tickSim() {
     const dt = 0.25 * (+settings.simSpeed);
-    simApi.sim.dir = engine.state.dir === 'auto' ? '26' : engine.state.dir;
+    simApi.sim.dir = engine.state.dir;
     simApi.step(dt, engine.last);
     // Die Simulation laeuft fluessig weiter, das AMAN rechnet und zeichnet nur alle 5 Sekunden
     if (Date.now() - lastTick >= refreshMs()) tick();
@@ -119,7 +119,8 @@
       online = Array.isArray(d.controllers) ? d.controllers.map(c => (c && c.callsign) || c).filter(c => typeof c === 'string') : null;
       const rw = Array.isArray(d.arrRwys) ? d.arrRwys.map(String) : [];
       traffic = { aircraft: Array.isArray(d.aircraft) ? d.aircraft : [], activeDir: rw.some(r => /^08/.test(r)) ? '08' : (rw.some(r => /^26/.test(r)) ? '26' : null) };
-      dataTime = typeof d.time === 'number' && isFinite(d.time) ? d.time : Date.now() / 1000;
+      const tOk = typeof d.time === 'number' && isFinite(d.time);
+      dataTime = tOk ? d.time : Date.now() / 1000;
       // Beim ersten Laden einmalig die Betriebsrichtung aus EuroScope uebernehmen, danach nie wieder
       if (!pollPlugin.dirSynced && traffic.activeDir) {
         pollPlugin.dirSynced = true;
@@ -131,7 +132,7 @@
         }
       }
       // veraltet zaehlt ab dem Zeitstempel der Daten: so faellt auch ein haengendes EuroScope auf
-      lastData = typeof d.time === 'number' && isFinite(d.time) ? Math.min(Date.now(), d.time * 1000) : Date.now(); connErr = null;
+      lastData = tOk ? Math.min(Date.now(), d.time * 1000) : Date.now(); connErr = null;
       tick();
     }).catch(e => {
       if (my !== pollSeq) return;
@@ -234,12 +235,10 @@
       }
     }
     const keys = Object.keys(mine);
-    const m0 = /^(?:EDMM_|LOVV_)([A-Z0-9]+)_CTR$/.exec(cs);
-    if (!keys.length) return { id: 'DYN', label: 'CTR ' + (m0 ? m0[1] : cs) + ' (no AMAN stream)', parts: [] };
+    const m = /^(?:EDMM_|LOVV_)([A-Z0-9]+)_CTR$/.exec(cs), name = 'CTR ' + (m ? m[1] : cs);
+    if (!keys.length) return { id: 'DYN', label: name + ' (no AMAN stream)', parts: [] };
     const parts = keys.sort().map(k => { const [iaf, stream] = k.split(':'); return { iaf, stream: stream || null }; });
-    const m = /^(?:EDMM_|LOVV_)([A-Z0-9]+)_CTR$/.exec(cs);
-    const names = parts.map(p => p.stream || p.iaf).join(' ');
-    return { id: 'DYN', label: 'CTR ' + (m ? m[1] : cs) + ' (' + names + ')', parts };
+    return { id: 'DYN', label: name + ' (' + parts.map(p => p.stream || p.iaf).join(' ') + ')', parts };
   }
   const ctrView = v => v === 'DYN' ? dynView() : ((cfg.ctrViews || []).find(x => x.id === v) || null);
   const isCtrView = v => !!ctrView(v);
@@ -897,10 +896,6 @@
         pl.append(t, b);
       }
     }
-    // Bahnnamen in der aktuellen Richtung
-    const ids = s2 => cfg.runways[s2].ids[cur];
-    const o = $('clSide').options;
-    o[0].textContent = 'North'; o[1].textContent = 'South'; o[2].textContent = 'Both';
     const ul = $('clList');
     const csig = engine.state.closures.map(c => c.id + ':' + c.to).join(',') + cur;
     if (!full && ul.dataset.sig === csig) return;

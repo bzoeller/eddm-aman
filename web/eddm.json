@@ -1,5 +1,5 @@
 {
- "_info": "Flughafendaten EDDM fuer den AMAN. Stroeme je IAF: erkannt ueber die Flugplanroute (route), sonst ueber die Peilung vom IAF (from/to als Peilungsbereich oder fix = Koordinaten des Einflugpunkts; ohne beides nur ueber die Route). text = Schriftfarbe im Label: fg = weiss (hell: schwarz), box = Farbe der Box. aipTrackMiles = durchschnittliche Flugentfernung ab IAF laut AIP AD 2 EDDM 1-30 (01 OCT 2026); danach wird gerechnet. Die Pfadgeometrie (aus den RNAV-Transitions) dient nur dazu, den Fortschritt eines Fliegers zu verfolgen, die Strecke vor dem 15-NM-Final wird auf den AIP-Wert skaliert.",
+ "_info": "EDDM fuer den AMAN. Felder erklaert in docs/config.md.",
  "airac": "AIP AD 2 EDDM 1-30, 01 OCT 2026 (AMDT 10/26)",
  "icao": "EDDM",
  "elevationFt": 1487,
@@ -59,19 +59,17 @@
    "lat": 48.51333,
    "lon": 11.19667,
    "side": "N",
-   "color": "#e8e8e8",
-   "sector": "NDG"
+   "color": "#e8e8e8"
   },
   "LANDU": {
    "lat": 48.59667,
    "lon": 12.27333,
    "side": "N",
    "color": "#2f6bff",
-   "sector": "RDG",
    "streams": {
-    "LULAR": { "route": ["LULAR", "T105"], "sector": "RDG", "text": "fg", "fix": { "lat": 49.365861, "lon": 12.758953 } },
-    "NIRGO": { "route": ["NIRGO", "T108"], "sector": "RDG", "text": "fg", "fix": { "lat": 49.330944, "lon": 13.132219 } },
-    "VESUB": { "route": ["VESUB", "T106"], "sector": "RDG", "text": "fg", "fix": { "lat": 49.419258, "lon": 12.997417 } }
+    "LULAR": { "route": ["LULAR", "T105"], "text": "fg", "fix": { "lat": 49.365861, "lon": 12.758953 } },
+    "NIRGO": { "route": ["NIRGO", "T108"], "text": "fg", "fix": { "lat": 49.330944, "lon": 13.132219 } },
+    "VESUB": { "route": ["VESUB", "T106"], "text": "fg", "fix": { "lat": 49.419258, "lon": 12.997417 } }
    }
   },
   "BETOS": {
@@ -79,10 +77,9 @@
    "lon": 11.35,
    "side": "S",
    "color": "#e8d53a",
-   "sector": "FUE/STA",
    "streams": {
-    "DISUN": { "route": ["DISUN", "T103"], "sector": "FUE", "text": "fg", "fix": { "lat": 47.862767, "lon": 11.105136 } },
-    "SOTOV": { "route": ["SOTOV", "T101"], "sector": "STA", "text": "box", "fix": { "lat": 46.943864, "lon": 11.210433 } }
+    "DISUN": { "route": ["DISUN", "T103"], "text": "fg", "fix": { "lat": 47.862767, "lon": 11.105136 } },
+    "SOTOV": { "route": ["SOTOV", "T101"], "text": "box", "fix": { "lat": 46.943864, "lon": 11.210433 } }
    }
   },
   "NAPSA": {
@@ -90,17 +87,15 @@
    "lon": 12.345,
    "side": "S",
    "color": "#e5413b",
-   "sector": "LOVV_B",
    "streams": {
-    "AMADI": { "route": ["AMADI", "Q113"], "sector": "LOVV_B", "text": "fg", "fix": { "lat": 48.091389, "lon": 12.913889 } },
-    "REDBU": { "route": ["REDBU", "Q112"], "sector": "LOVV_B", "text": "box", "fix": { "lat": 47.955886, "lon": 12.818228 } }
+    "AMADI": { "route": ["AMADI", "Q113"], "text": "fg", "fix": { "lat": 48.091389, "lon": 12.913889 } },
+    "REDBU": { "route": ["REDBU", "Q112"], "text": "box", "fix": { "lat": 47.955886, "lon": 12.818228 } }
    }
   }
  },
  "paths": {
   "ROKIL": {
    "08L": {
-    "trackMiles": 85.5,
     "path": [
      {
       "name": "ROKIL",
@@ -166,7 +161,6 @@
     "aipTrackMiles": 43
    },
    "08R": {
-    "trackMiles": 87.5,
     "path": [
      {
       "name": "ROKIL",
@@ -232,7 +226,6 @@
     "aipTrackMiles": 43
    },
    "26L": {
-    "trackMiles": 62.6,
     "path": [
      {
       "name": "ROKIL",
@@ -293,7 +286,6 @@
     "aipTrackMiles": 72
    },
    "26R": {
-    "trackMiles": 62.2,
     "path": [
      {
       "name": "ROKIL",
@@ -356,7 +348,6 @@
   },
   "LANDU": {
    "08L": {
-    "trackMiles": 61.2,
     "path": [
      {
       "name": "LANDU",
@@ -417,7 +408,6 @@
     "aipTrackMiles": 66
    },
    "08R": {
-    "trackMiles": 63.3,
     "path": [
      {
       "name": "LANDU",
@@ -478,7 +468,6 @@
     "aipTrackMiles": 66
    },
    "26L": {
-    "trackMiles": 84.5,
     "path": [
      {
       "name": "LANDU",
@@ -544,7 +533,6 @@
     "aipTrackMiles": 44
    },
    "26R": {
-    "trackMiles": 84.1,
     "path": [
      {
       "name": "LANDU",
@@ -612,7 +600,6 @@
   },
   "BETOS": {
    "08L": {
-    "trackMiles": 84.4,
     "path": [
      {
       "name": "BETOS",
@@ -693,7 +680,6 @@
     "aipTrackMiles": 53
    },
    "08R": {
-    "trackMiles": 84.0,
     "path": [
      {
       "name": "BETOS",
@@ -774,7 +760,6 @@
     "aipTrackMiles": 53
    },
    "26L": {
-    "trackMiles": 58.9,
     "path": [
      {
       "name": "BETOS",
@@ -830,7 +815,6 @@
     "aipTrackMiles": 68
    },
    "26R": {
-    "trackMiles": 61.0,
     "path": [
      {
       "name": "BETOS",
@@ -888,7 +872,6 @@
   },
   "NAPSA": {
    "08L": {
-    "trackMiles": 64.5,
     "path": [
      {
       "name": "NAPSA",
@@ -949,7 +932,6 @@
     "aipTrackMiles": 69
    },
    "08R": {
-    "trackMiles": 64.0,
     "path": [
      {
       "name": "NAPSA",
@@ -1010,7 +992,6 @@
     "aipTrackMiles": 69
    },
    "26L": {
-    "trackMiles": 85.6,
     "path": [
      {
       "name": "NAPSA",
@@ -1091,7 +1072,6 @@
     "aipTrackMiles": 47
    },
    "26R": {
-    "trackMiles": 87.7,
     "path": [
      {
       "name": "NAPSA",
@@ -1179,7 +1159,8 @@
   "fap": 200,
   "final": 170,
   "finalSlowNm": 5,
-  "finalNm": 15, "finalMaxAltFt": 7000
+  "finalNm": 15,
+  "finalMaxAltFt": 7000
  },
  "vapp": {
   "wtc": {
@@ -1262,7 +1243,14 @@
   "finalGsMode": "typwind",
   "fixedFinalGs": 140,
   "bentLineBelowMin": 2,
-  "lostAfterSec": 60, "shortcutMinNm": 2, "refreshSec": 5, "minRadarSepNm": 2.5, "rwyChangeBufferSec": 30, "vectorAreaNm": 45, "vectorMaxAltFt": 16000, "vectorMissNm": 3, "finalInterceptMinNm": 8
+  "lostAfterSec": 60,
+  "shortcutMinNm": 2,
+  "refreshSec": 5,
+  "rwyChangeBufferSec": 30,
+  "vectorAreaNm": 45,
+  "vectorMaxAltFt": 16000,
+  "vectorMissNm": 3,
+  "finalInterceptMinNm": 8
  },
  "roles": {
   "APP": "^EDDM_.*APP$",

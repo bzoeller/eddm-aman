@@ -285,7 +285,22 @@
     return out;
   }
 
+  /** Pflichtwerte der Config pruefen: Standardwerte stehen nur in eddm.json, nicht im Code. */
+  const REQUIRED = {
+    defaults: ['spacingNm', 'ratePerRwy', 'timelineMin', 'captureNm', 'hysteresisSec', 'ctrMaxDelayMin', 'fixedFinalGs', 'bentLineBelowMin',
+      'lostAfterSec', 'shortcutMinNm', 'refreshSec', 'rwyChangeBufferSec', 'vectorAreaNm', 'vectorMaxAltFt', 'vectorMissNm', 'finalInterceptMinNm'],
+    profile: ['belowFL100', 'downwind', 'fap', 'final', 'finalSlowNm', 'finalNm', 'finalMaxAltFt']
+  };
+  function validateConfig(cfg) {
+    const bad = [];
+    for (const grp of Object.keys(REQUIRED)) for (const k of REQUIRED[grp])
+      if (!cfg[grp] || typeof cfg[grp][k] !== 'number' || !isFinite(cfg[grp][k])) bad.push(grp + '.' + k);
+    for (const k of ['runways', 'iafs', 'paths', 'wind', 'vapp', 'wake']) if (!cfg[k]) bad.push(k);
+    if (bad.length) throw new Error('eddm.json: missing or invalid ' + bad.join(', '));
+  }
+
   function createEngine(cfg, savedState) {
+    validateConfig(cfg);
     const proj = makeProjection(cfg.wind.lat, cfg.wind.lon);
     const paths = preparePaths(cfg, proj);
     const dwPaths = downwindPaths(cfg, paths);
@@ -305,10 +320,6 @@
     function sideOfRwy(r) { return SIDES.find(sd => Object.values(cfg.runways[sd].ids).indexOf(r) >= 0) || null; }
     function closedAt(side, t) {
       return st.closures.find(c => c.side === side && t >= c.from && t < c.to) || null;
-    }
-    function sideClosedLong(side, t) {
-      // Bahn gilt fuer die Zuteilung als zu, wenn sie zur ETA gesperrt ist
-      return !!closedAt(side, t);
     }
 
     function nearestIaf(p) {
@@ -338,13 +349,13 @@
     function vectoredEta(ac, a, path, p, ttg, toIafDirect) {
       const D = cfg.defaults;
       if (a.trk == null || ac.inHold || toIafDirect < 3) return null;
-      if (Math.hypot(p.x, p.y) > (D.vectorAreaNm || 45)) return null;            // nur im Anflugbereich
-      if (ac.alt != null && ac.alt > (D.vectorMaxAltFt || 16000)) return null;
+      if (Math.hypot(p.x, p.y) > D.vectorAreaNm) return null;            // nur im Anflugbereich
+      if (ac.alt != null && ac.alt > D.vectorMaxAltFt) return null;
       // Fliegt der Kurs am IAF vorbei? (seitlicher Abstand am naechsten Punkt, oder IAF liegt hinter dem Flieger)
       const brg = trackDeg(p, path.pts[0]);
       const diff = Math.abs(((a.trk - brg) % 360 + 540) % 360 - 180);
       const miss = diff >= 90 ? toIafDirect : toIafDirect * Math.sin(diff * Math.PI / 180);
-      if (miss < (D.vectorMissNm || 3)) return null;
+      if (miss < D.vectorMissNm) return null;
       const gs = ac.gs > 60 ? ac.gs : 220;
       const tVia = toIafDirect / gs * 3600 + ttg[0];
       let best = null;
@@ -399,20 +410,14 @@
       const wx = thr.x - p.x, wy = thr.y - p.y;
       const u = (wx * ey - wy * ex) / den, f = (wx * uy - wy * ux) / den;
       // eingefangen wird das Final erst ab etwa 8 NM; naeher an der Schwelle ist es ein Queren (z. B. zum anderen Downwind)
-      if (u < 0.3 || u > 40 || f * 30 < (cfg.defaults.finalInterceptMinNm || 8) || f > 1) return null;
+      if (u < 0.3 || u > 40 || f * 30 < cfg.defaults.finalInterceptMinNm || f > 1) return null;
       const r = f * 30, F = cfg.profile.finalNm, gs = ac.gs > 60 ? ac.gs : 220;
       const tFin = finalTime(path, ttg, r);
       return { t: u / gs * 3600 + tFin, rem: u + r, s: path.length - Math.min(r, F) };
     }
 
     /** Ist der Flieger tief genug, um auf dem Final zu sein (Standard 7000 ft oder darunter)? */
-    function finalAllowed(ac) { return ac.alt == null || ac.alt <= (cfg.profile.finalMaxAltFt || 7000); }
-
-    /** Mindestabstand (Radar oder Wirbelschleppe) in Sekunden, ohne FLOW und Landerate. */
-    function minSepSeconds(lead, foll, side, dir, winds) {
-      const nm = Math.max(cfg.defaults.minRadarSepNm || 2.5, wakeNm(lead, foll));
-      return nm / finalGs(foll, side, dir, winds) * 3600;
-    }
+    function finalAllowed(ac) { return ac.alt == null || ac.alt <= cfg.profile.finalMaxAltFt; }
 
     /**
      * ETA fuer ein Flugzeug auf einem bestimmten Pfad.
@@ -437,7 +442,7 @@
         // Querabweichung (Vektoren, Delay) zaehlt als zusaetzliche Strecke zurueck auf den Pfad
         const extra = pr.cross > 1 ? pr.cross : 0;
         const gs = ac.gs > 60 ? ac.gs : 200;
-        let t = ttgAt(ttg, pr.s) + extra / gs * 3600, rem = along + extra, cut = false;
+        let t = ttgAt(ttg, pr.s) + extra / gs * 3600, rem = along + extra;
         // auf der Anfluglinie (auch vor FAP15, z. B. nach Heading direkt aufs verlaengerte Final)
         const rF = onFinalOf(path, p, ac, a);
         if (rF != null) { const tF = finalTime(path, ttg, rF); if (tF < t + 30 || rF > cfg.profile.finalNm) { t = tF; rem = rF; } }
@@ -450,19 +455,19 @@
           for (const hit of rayHits(path, p, trk, pr.s + 1, 30)) {
             if (hit.s - pr.s <= hit.d + cfg.defaults.shortcutMinNm) continue;
             const tHit = hit.d / gs * 3600 + ttgAt(ttg, hit.s);
-            if (tHit < t - minGain) { t = tHit; rem = hit.d + effRemaining(cfg, path, hit.s); cut = true; }
+            if (tHit < t - minGain) { t = tHit; rem = hit.d + effRemaining(cfg, path, hit.s); }
           }
           const fin = finalIntercept(ac, a, path, ttg, p);
-          if (fin && fin.t < t - Math.max(30, minGain)) { t = fin.t; rem = fin.rem; cut = true; }
+          if (fin && fin.t < t - Math.max(30, minGain)) { t = fin.t; rem = fin.rem; }
         }
-        return { eta: now + t, etaIaf: null, remainingNm: rem, passedIaf: true, sNew: pr.s, tIafToThr: ttg[0], shortcut: cut, tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) };
+        return { eta: now + t, etaIaf: null, remainingNm: rem, passedIaf: true, sNew: pr.s, tIafToThr: ttg[0], tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) };
       }
       // Per Heading gefuehrt, ohne den IAF zu ueberfliegen (z. B. direkt Richtung Final): Zeigt der Kurs im
       // Anflugbereich deutlich am IAF vorbei auf einen spaeteren Teil des Pfades, gilt der Flieger als von APP
       // gefuehrt. Gerechnet wird direkt bis zum Schnittpunkt, ab dort Standardprofil.
       const vec = vectoredEta(ac, a, path, p, ttg, toIafDirect);
       if (vec) {
-        return { eta: now + vec.t, etaIaf: null, remainingNm: vec.rem, passedIaf: true, sNew: 0, tIafToThr: ttg[0], shortcut: true, vectored: true,
+        return { eta: now + vec.t, etaIaf: null, remainingNm: vec.rem, passedIaf: true, sNew: 0, tIafToThr: ttg[0], vectored: true,
           tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) };
       }
       const dIaf = ac.distToIaf != null ? Math.max(ac.distToIaf, toIafDirect) : toIafDirect;
@@ -492,7 +497,7 @@
       if (rF != null) {
         a.xOn = true;
         return { eta: now + finalTime(P, ttg, rF), etaIaf: null, remainingNm: rF, passedIaf: true, sNew: a.sMin || 0, tIafToThr: ttg[0],
-          tFinal: ttgAt(ttg, Math.max(0, P.length - cfg.profile.finalNm)), xfer: false, viaDownwind: D.iaf };
+          tFinal: ttgAt(ttg, Math.max(0, P.length - cfg.profile.finalNm)), viaDownwind: D.iaf };
       }
       const minS = Math.max(D.sDw, a.xMin || 0);
       // Eintritt nur auf dem Downwind (bis ABEAM), nicht auf Base oder Final
@@ -521,7 +526,7 @@
       const fin = finalIntercept(ac, a, P, ttg, p);
       if (fin && fin.t < t - 30) { t = fin.t; rem = fin.rem; onDw = true; }
       return { eta: now + t, etaIaf: null, remainingNm: rem, passedIaf: true, sNew: a.sMin || 0, tIafToThr: ttg[0],
-        tFinal: ttgAt(ttg, Math.max(0, P.length - cfg.profile.finalNm)), xfer: !onDw, viaDownwind: D.iaf };
+        tFinal: ttgAt(ttg, Math.max(0, P.length - cfg.profile.finalNm)), viaDownwind: D.iaf };
     }
 
     /**
@@ -563,7 +568,7 @@
         if (seen[ac.cs]) continue;
         seen[ac.cs] = true;
         let a = st.ac[ac.cs];
-        if (!a) a = st.ac[ac.cs] = { firstSeen: now };
+        if (!a) a = st.ac[ac.cs] = {};
         a.lastSeen = now;
         const p = proj.xy(ac.lat, ac.lon);
         // Kurs ueber Grund: aus den Daten, sonst aus der Bewegung seit dem letzten Update
@@ -579,7 +584,6 @@
         if (!iafIn && typeof ac.route === 'string') { const tk = ac.route.toUpperCase().split(/[\s.\/]+/); iafIn = Object.keys(cfg.iafs).find(k => tk.indexOf(k) >= 0) || null; }
         const iaf = iafIn || a.iaf || nearestIaf(p);
         a.iaf = iaf;
-        a.viaIaf = !!iafIn;
         // Einflugstrom (z. B. DISUN T103 BETOS oder SOTOV T101 BETOS): zuerst aus der Flugplanroute,
         // sonst aus der Peilung vom IAF (festgehalten, sobald der Flieger naeher als 40 NM ist)
         const strm = cfg.iafs[iaf].streams;
@@ -605,7 +609,7 @@
             a.esByCtl = true;
             if (sES && sES !== (a.rwySide || cfg.iafs[iaf].side)) {
               a.rwySide = sES !== cfg.iafs[iaf].side ? sES : null;
-              a.locked = false; a.hold = false; a.esChanged = now;
+              a.locked = false; a.hold = false;
               st.hold = st.hold.filter(c => c !== ac.cs);
               for (const s2 of SIDES) st.seq[s2] = st.seq[s2].filter(c => c !== ac.cs);
             }
@@ -631,11 +635,11 @@
         }
         let path = paths[iaf][rwyId(side, acDir)];
         let r = computeEta(ac, a, path, now, winds);
-        if (!a.rwySide && sideClosedLong(side, r.eta)) {
+        if (!a.rwySide && closedAt(side, r.eta)) {
           const other = side === 'N' ? 'S' : 'N';
           const p2 = paths[iaf][rwyId(other, acDir)];
           const r2 = computeEta(ac, a, p2, now, winds);
-          if (!sideClosedLong(other, r2.eta)) { side = other; path = p2; r = r2; }
+          if (!closedAt(other, r2.eta)) { side = other; path = p2; r = r2; }
         }
         // Hinter dem IAF auf der anderen Bahn: Rechnung ueber deren Downwind
         if (r.passedIaf && side !== cfg.iafs[iaf].side) {
@@ -650,7 +654,7 @@
 
         // Durchstart: als gelandet gezaehlt, aber wieder in der Luft und steigend -> neu einplanen
         if (a.landed && ac.alt != null && ac.alt > cfg.elevationFt + 800 && ac.gs > 120) {
-          a.landed = false; a.goAround = now; a.locked = false; a.sMin = 0; a.xMin = 0; a.xOn = false;
+          a.landed = false; a.locked = false; a.sMin = 0; a.xMin = 0; a.xOn = false;
           const k = st.landed.findIndex(l => l.cs === ac.cs);
           if (k >= 0) { st.cnt = st.cnt || { N: 0, S: 0 }; st.cnt[st.landed[k].side] = Math.max(0, st.cnt[st.landed[k].side] - 1); st.landed.splice(k, 1); }
         }
@@ -673,12 +677,11 @@
 
         if (!isFinite(r.eta)) continue; // letzte Sicherung gegen kaputte Werte
         items.push({
-          cs: ac.cs, type: ac.type || '', wtc: ac.wtc || 'M', iaf, stream: a.stream, viaIaf: a.viaIaf, side,
+          cs: ac.cs, type: ac.type || '', wtc: ac.wtc || 'M', iaf, stream: a.stream, side,
           dir: acDir, rwy: rwyId(side, acDir), tFinal: r.tFinal, eta: r.eta, etaIaf: r.etaIaf, tIafToThr: r.tIafToThr,
           remainingNm: r.remainingNm, passedIaf: r.passedIaf, hold: !!a.hold,
-          locked: !!a.locked, manualRwy: !!a.rwySide, shortcut: !!r.shortcut,
-          trackedBy: typeof ac.trackedBy === 'string' && ac.trackedBy ? ac.trackedBy.toUpperCase() : null,
-          xfer: !!r.xfer, viaDownwind: r.viaDownwind || null, esRwy: a.esRwy || null
+          locked: !!a.locked,
+          trackedBy: typeof ac.trackedBy === 'string' && ac.trackedBy ? ac.trackedBy.toUpperCase() : null
         });
       }
 
@@ -749,7 +752,7 @@
       // dann die neue: der erste Flieger der neuen Richtung ist erst bei 15 NM, wenn die letzte
       // Landung der alten Richtung erfolgt ist.
       const tgtDir = ch ? ch.to : dir;
-      const prevBy = { N: null, S: null }, idxBy = { N: 0, S: 0 };
+      const prevBy = { N: null, S: null };
       let lastOld = null;
       for (const phase of [0, 1]) {
         if (phase === 1) {
@@ -768,7 +771,7 @@
           if (prevItem) req = Math.max(req, prevItem.reqSta + sepSeconds(prevItem, it, side, it.dir, winds));
           // Runway Change: neue Richtung erst ab dem Zeitpunkt und erst bei 15 NM, wenn die alte Richtung leer ist
           if (ch && it.dir === ch.to) req = Math.max(req, ch.at);
-          if (phase === 1 && lastOld != null) req = Math.max(req, lastOld + (it.tFinal || 0) + (cfg.defaults.rwyChangeBufferSec || 0));
+          if (phase === 1 && lastOld != null) req = Math.max(req, lastOld + (it.tFinal || 0) + cfg.defaults.rwyChangeBufferSec);
           let guard2 = 0, c;
           while ((c = closedAt(side, req)) && guard2++ < 20) req = c.to;
           // Der Streifen steht immer auf der geplanten Zeit mit voller Staffelung (FLOW, Wirbelschleppe,
@@ -780,8 +783,6 @@
           it.reqSta = req;
           it.delay = req - it.eta;
           a.lastDelay = it.delay;
-          it.seqIndex = idxBy[side]++;
-          it.gapToPrev = prevItem ? sta - prevItem.sta : null;
           if (it.etaIaf != null) {
             const staIaf = sta - it.tIafToThr;
             it.staIaf = staIaf;
@@ -872,7 +873,6 @@
       for (const cs of st.hold) if (st.ac[cs]) st.ac[cs].hold = false;
       st.hold = [];
     }
-    function unlock(cs) { const a = st.ac[cs]; if (a) { a.locked = false; a.rwySide = null; } }
     function setStatic(on) {
       st.staticMode = !!on;
       if (on) for (const i of last.list) if (st.ac[i.cs] && i.sta) st.ac[i.cs].frozenSta = i.sta;
@@ -889,11 +889,9 @@
     }
     function removeClosure(id) { st.closures = st.closures.filter(c => c.id !== id); }
     return {
-      cfg, state: st, update, stats, moveTo, insertByEta, toHold, recompute, recomputeOne, unlock, setStatic,
-      addClosure, removeClosure, setDirChange, clearDirChange, paths, dwPaths, proj, timeTable: (path, vapp, winds) => timeTable(cfg, path, vapp, winds),
-      get last() { return last; },
-      set: (k, v) => { st[k] = v; },
-      exportState: () => JSON.parse(JSON.stringify(Object.assign({}, st, { ac: st.ac })))
+      cfg, state: st, update, stats, moveTo, insertByEta, toHold, recompute, recomputeOne, setStatic,
+      addClosure, removeClosure, setDirChange, clearDirChange, paths, dwPaths, proj,
+      get last() { return last; }
     };
   }
 
@@ -912,7 +910,7 @@
     const views = cfg.ctrViews || [];
     const direct = views.find(v => v.callsign && new RegExp(v.callsign).test(callsign || ''));
     if (direct) return direct.id;
-    const m = /^EDMM_([A-Z0-9]+?)\d?_CTR$/.exec(callsign || '') || /^EDMM_([A-Z0-9]+)_CTR$/.exec(callsign || '');
+    const m = /^EDMM_([A-Z0-9]+?)\d?_CTR$/.exec(callsign || '');
     if (!m) return null;
     const own = views.find(v => v.sector === m[1]);
     if (!own) return null;
