@@ -22,6 +22,10 @@
   }
   const dist = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
   const trackDeg = (a, b) => (Math.atan2(b.x - a.x, b.y - a.y) * 180 / Math.PI + 360) % 360;
+  /** Kleinster Winkel zwischen zwei Kursen (0..180). */
+  const angDiff = (a, b) => Math.abs(((a - b) % 360 + 540) % 360 - 180);
+  /** Hoehe auf dem Standardprofil r NM vor der Schwelle (3-Grad-Gleitweg, hoechstens 10000 ft). */
+  const altAt = (cfg, r) => Math.min(10000, cfg.elevationFt + r * 318);
 
   /** Gegenwindkomponente (positiv = Gegenwind) fuer Kurs trk und Wind aus dir mit spd. */
   function headwind(trk, wind) {
@@ -91,30 +95,49 @@
     return best || { s: minS, cross: 0 };
   }
 
+  /** Schnitt des Strahls p + u*(vx,vy) mit dem Segment a + t*(ex,ey): { u, t } oder null (parallel). */
+  function raySeg(p, vx, vy, a, ex, ey) {
+    const den = vx * ey - vy * ex;
+    if (Math.abs(den) < 1e-6) return null;
+    const wx = a.x - p.x, wy = a.y - p.y;
+    return { u: (wx * ey - wy * ex) / den, t: (wx * vy - wy * vx) / den };
+  }
+
   /**
-   * Erster Schnittpunkt eines Strahls (Position, Kurs) mit dem Pfad hinter minS.
-   * Liefert { s, d } (Pfadposition und Direktentfernung) oder null.
+   * Alle Schnittpunkte des Kursstrahls mit dem Pfad zwischen minS und maxS (ab 0.3 NM, bis maxD voraus),
+   * nach Entfernung sortiert: [{ s (Pfadposition), d (Direktentfernung) }].
    */
-  function rayHit(path, p, trk, minS, maxD, maxS) {
+  function rayHits(path, p, trk, minS, maxD, maxS) {
     if (maxS == null) maxS = path.length;
-    const ux = Math.sin(trk * Math.PI / 180), uy = Math.cos(trk * Math.PI / 180);
-    let best = null;
+    const ux = Math.sin(trk * Math.PI / 180), uy = Math.cos(trk * Math.PI / 180), out = [];
     for (let i = 1; i < path.pts.length; i++) {
       if (path.cum[i] <= minS) continue;
       if (path.cum[i - 1] >= maxS) break;
       const a = path.pts[i - 1], b = path.pts[i];
-      const ex = b.x - a.x, ey = b.y - a.y;
-      const den = ux * ey - uy * ex;
-      if (Math.abs(den) < 1e-6) continue; // parallel
-      const wx = a.x - p.x, wy = a.y - p.y;
-      const u = (wx * ey - wy * ex) / den;   // Entfernung entlang des Strahls
-      const t = (wx * uy - wy * ux) / den;   // Anteil auf dem Segment
-      if (u < 0.3 || u > maxD || t < 0 || t > 1) continue;
-      const sHit = path.cum[i - 1] + t * (path.cum[i] - path.cum[i - 1]);
-      if (sHit <= minS || sHit > maxS) continue;
-      if (!best || u < best.d) best = { s: sHit, d: u };
+      const h = raySeg(p, ux, uy, a, b.x - a.x, b.y - a.y);
+      if (!h || h.u < 0.3 || h.u > maxD || h.t < 0 || h.t > 1) continue;
+      const sHit = path.cum[i - 1] + h.t * (path.cum[i] - path.cum[i - 1]);
+      if (sHit > minS && sHit <= maxS) out.push({ s: sHit, d: h.u });
     }
-    return best;
+    return out.sort((x, y) => x.d - y.d);
+  }
+  /** Naechster Schnittpunkt oder null. */
+  function rayHit(path, p, trk, minS, maxD, maxS) { return rayHits(path, p, trk, minS, maxD, maxS)[0] || null; }
+
+  // ---------- Anfluglinie ----------
+  const FINAL_EXT_NM = 30;   // verlaengerte Anfluglinie, auf der ein Heading direkt aufs Final erkannt wird
+  /** Geometrie der Anfluglinie eines Pfades: Schwelle, Einheitsvektor nach aussen, Inbound-Kurs. */
+  function finalGeo(path) {
+    const fi = path.pts.findIndex(q => q.name === 'FAP15');
+    if (fi < 0) return null;
+    const thr = path.pts[path.pts.length - 1], fap = path.pts[fi];
+    const L = dist(thr, fap) || 1;
+    return { thr, ox: (fap.x - thr.x) / L, oy: (fap.y - thr.y) / L, inbound: trackDeg(fap, thr) };
+  }
+  /** Schnitt des Wegs p + u*(vx,vy) mit der verlaengerten Anfluglinie: { u, r (NM vor der Schwelle) } oder null. */
+  function finalCross(G, p, vx, vy) {
+    const h = raySeg(p, vx, vy, G.thr, G.ox * FINAL_EXT_NM, G.oy * FINAL_EXT_NM);
+    return h && { u: h.u, r: h.t * FINAL_EXT_NM };
   }
 
   /**
@@ -136,7 +159,7 @@
           if (iA < 1) iA = Math.max(1, P.pts.length - 3);
           let i = iA;
           while (i > 1) {
-            const d = Math.abs(((trackDeg(P.pts[i - 2], P.pts[i - 1]) - recip) % 360 + 540) % 360 - 180);
+            const d = angDiff(trackDeg(P.pts[i - 2], P.pts[i - 1]), recip);
             if (d > 35) break;
             i--;
           }
@@ -148,23 +171,6 @@
       }
     }
     return out;
-  }
-
-  /** Alle Schnittpunkte eines Strahls mit dem Pfad hinter minS, nach Entfernung sortiert. */
-  function rayHits(path, p, trk, minS, maxD) {
-    const ux = Math.sin(trk * Math.PI / 180), uy = Math.cos(trk * Math.PI / 180), out = [];
-    for (let i = 1; i < path.pts.length; i++) {
-      if (path.cum[i] <= minS) continue;
-      const a = path.pts[i - 1], b = path.pts[i];
-      const ex = b.x - a.x, ey = b.y - a.y, den = ux * ey - uy * ex;
-      if (Math.abs(den) < 1e-6) continue;
-      const wx = a.x - p.x, wy = a.y - p.y;
-      const u = (wx * ey - wy * ex) / den, t = (wx * uy - wy * ux) / den;
-      if (u < 0.3 || u > maxD || t < 0 || t > 1) continue;
-      const sHit = path.cum[i - 1] + t * (path.cum[i] - path.cum[i - 1]);
-      if (sHit > minS) out.push({ s: sHit, d: u });
-    }
-    return out.sort((x, y) => x.d - y.d);
   }
 
   // ---------- Speedprofil ----------
@@ -192,7 +198,7 @@
       const s0 = k * STEP_NM, s1 = Math.min(path.length, s0 + STEP_NM);
       const mid = pointAt(path, (s0 + s1) / 2);
       const r = path.length - (s0 + s1) / 2;
-      const alt = Math.min(10000, cfg.elevationFt + r * 318);
+      const alt = altAt(cfg, r);
       const ias = profileIas(cfg, r, vapp);
       const wind = r > cfg.profile.finalNm ? (winds.aloft || winds.surface) : (winds.surface || winds.aloft);
       const gs = Math.max(80, tasFromIas(ias, alt) - headwind(mid.trk, wind));
@@ -233,7 +239,7 @@
     const withFix = Object.keys(streams).filter(k => streams[k]._brg != null);
     if (withFix.length) {
       let best = null, bd = 46;
-      for (const k of withFix) { const d = Math.abs(((brg - streams[k]._brg) % 360 + 540) % 360 - 180); if (d < bd) { bd = d; best = k; } }
+      for (const k of withFix) { const d = angDiff(brg, streams[k]._brg); if (d < bd) { bd = d; best = k; } }
       return best;
     }
     const keys = Object.keys(streams).filter(k => streams[k].from != null && streams[k].to != null);
@@ -260,7 +266,8 @@
       ac: {},                      // pro Callsign: rwySide, hold, locked, captured, sMin, frozenSta, iaf
       seq: { N: [], S: [] },
       hold: [],
-      landed: []                   // {cs, side, t}
+      landed: [],                  // {cs, side, t}
+      cnt: { N: 0, S: 0 }          // Landungen je Bahn seit dem Start
     };
   }
 
@@ -353,7 +360,7 @@
       if (ac.alt != null && ac.alt > D.vectorMaxAltFt) return null;
       // Fliegt der Kurs am IAF vorbei? (seitlicher Abstand am naechsten Punkt, oder IAF liegt hinter dem Flieger)
       const brg = trackDeg(p, path.pts[0]);
-      const diff = Math.abs(((a.trk - brg) % 360 + 540) % 360 - 180);
+      const diff = angDiff(a.trk, brg);
       const miss = diff >= 90 ? toIafDirect : toIafDirect * Math.sin(diff * Math.PI / 180);
       if (miss < D.vectorMissNm) return null;
       const gs = ac.gs > 60 ? ac.gs : 220;
@@ -369,19 +376,11 @@
       return best;
     }
 
-    /** Geometrie der Anfluglinie eines Pfades: Schwelle, Einheitsvektor nach aussen, Inbound-Kurs. */
-    function finalGeo(path) {
-      const fi = path.pts.findIndex(q => q.name === 'FAP15');
-      if (fi < 0) return null;
-      const thr = path.pts[path.pts.length - 1], fap = path.pts[fi];
-      const L = dist(thr, fap) || 1;
-      return { thr, ox: (fap.x - thr.x) / L, oy: (fap.y - thr.y) / L, inbound: trackDeg(fap, thr) };
-    }
     /** Flugzeit vom Punkt r NM vor der Schwelle (auf der Anfluglinie) bis zur Schwelle. */
     function finalTime(path, ttg, r) {
       const F = cfg.profile.finalNm;
       if (r <= F) return ttgAt(ttg, Math.max(0, path.length - r));
-      return ttgAt(ttg, path.length - F) + (r - F) / tasFromIas(cfg.profile.fap, Math.min(10000, cfg.elevationFt + r * 318)) * 3600;
+      return ttgAt(ttg, path.length - F) + (r - F) / tasFromIas(cfg.profile.fap, altAt(cfg, r)) * 3600;
     }
     /** Fliegt der Flieger auf der (verlaengerten) Anfluglinie in Landerichtung? Liefert r (NM bis Schwelle) oder null. */
     function onFinalOf(path, p, ac, a) {
@@ -390,7 +389,7 @@
       const along = (p.x - G.thr.x) * G.ox + (p.y - G.thr.y) * G.oy;
       const lat = Math.abs((p.x - G.thr.x) * G.oy - (p.y - G.thr.y) * G.ox);
       if (along < 0.5 || along > 30 || lat > 1.5) return null;
-      if (a.trk != null && Math.abs(((a.trk - G.inbound) % 360 + 540) % 360 - 180) > 35) return null;
+      if (a.trk != null && angDiff(a.trk, G.inbound) > 35) return null;
       return along;
     }
 
@@ -402,16 +401,11 @@
       if (a.trk == null || ac.inHold) return null;
       const G = finalGeo(path);
       if (!G) return null;
-      const thr = G.thr, ox = G.ox, oy = G.oy, inbound = G.inbound;
-      if (Math.abs(((a.trk - inbound) % 360 + 540) % 360 - 180) > 100) return null;     // fliegt nicht in Landerichtung ein
-      const ux = Math.sin(a.trk * Math.PI / 180), uy = Math.cos(a.trk * Math.PI / 180);
-      const ex = ox * 30, ey = oy * 30, den = ux * ey - uy * ex;
-      if (Math.abs(den) < 1e-6) return null;
-      const wx = thr.x - p.x, wy = thr.y - p.y;
-      const u = (wx * ey - wy * ex) / den, f = (wx * uy - wy * ux) / den;
+      if (angDiff(a.trk, G.inbound) > 100) return null;     // fliegt nicht in Landerichtung ein
+      const x = finalCross(G, p, Math.sin(a.trk * Math.PI / 180), Math.cos(a.trk * Math.PI / 180));
       // eingefangen wird das Final erst ab etwa 8 NM; naeher an der Schwelle ist es ein Queren (z. B. zum anderen Downwind)
-      if (u < 0.3 || u > 40 || f * 30 < cfg.defaults.finalInterceptMinNm || f > 1) return null;
-      const r = f * 30, F = cfg.profile.finalNm, gs = ac.gs > 60 ? ac.gs : 220;
+      if (!x || x.u < 0.3 || x.u > 40 || x.r < cfg.defaults.finalInterceptMinNm || x.r > FINAL_EXT_NM) return null;
+      const u = x.u, r = x.r, F = cfg.profile.finalNm, gs = ac.gs > 60 ? ac.gs : 220;
       const tFin = finalTime(path, ttg, r);
       return { t: u / gs * 3600 + tFin, rem: u + r, s: path.length - Math.min(r, F) };
     }
@@ -423,6 +417,12 @@
      * ETA fuer ein Flugzeug auf einem bestimmten Pfad.
      * Liefert eta (Touchdown), etaIaf, remainingNm, passedIaf, sNew.
      */
+    /** Gemeinsame Felder eines ETA-Ergebnisses hinter dem IAF; weitere Felder kommen aus extra. */
+    function etaResult(path, ttg, now, t, rem, extra) {
+      return Object.assign({ eta: now + t, etaIaf: null, remainingNm: rem, passedIaf: true, sNew: 0, tIafToThr: ttg[0],
+        tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) }, extra);
+    }
+
     function computeEta(ac, a, path, now, winds) {
       const p = proj.xy(ac.lat, ac.lon);
       const vapp = vappFor(cfg, ac);
@@ -460,15 +460,14 @@
           const fin = finalIntercept(ac, a, path, ttg, p);
           if (fin && fin.t < t - Math.max(30, minGain)) { t = fin.t; rem = fin.rem; }
         }
-        return { eta: now + t, etaIaf: null, remainingNm: rem, passedIaf: true, sNew: pr.s, tIafToThr: ttg[0], tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) };
+        return etaResult(path, ttg, now, t, rem, { sNew: pr.s });
       }
       // Per Heading gefuehrt, ohne den IAF zu ueberfliegen (z. B. direkt Richtung Final): Zeigt der Kurs im
       // Anflugbereich deutlich am IAF vorbei auf einen spaeteren Teil des Pfades, gilt der Flieger als von APP
       // gefuehrt. Gerechnet wird direkt bis zum Schnittpunkt, ab dort Standardprofil.
       const vec = vectoredEta(ac, a, path, p, ttg, toIafDirect);
       if (vec) {
-        return { eta: now + vec.t, etaIaf: null, remainingNm: vec.rem, passedIaf: true, sNew: 0, tIafToThr: ttg[0], vectored: true,
-          tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) };
+        return etaResult(path, ttg, now, vec.t, vec.rem, { vectored: true });
       }
       const dIaf = ac.distToIaf != null ? Math.max(ac.distToIaf, toIafDirect) : toIafDirect;
       let gs;
@@ -478,7 +477,7 @@
         gs = Math.max(150, tasFromIas(cfg.profile.belowFL100, Math.max(ac.alt || 8000, 4000)) - headwind(trk, winds.aloft));
       }
       const tIaf = dIaf / gs * 3600;
-      return { eta: now + tIaf + ttg[0], etaIaf: now + tIaf, remainingNm: dIaf + effRemaining(cfg, path, 0), passedIaf: false, sNew: 0, tIafToThr: ttg[0], tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) };
+      return etaResult(path, ttg, now, tIaf + ttg[0], dIaf + effRemaining(cfg, path, 0), { etaIaf: now + tIaf, passedIaf: false });
     }
 
     /**
@@ -496,19 +495,17 @@
       const rF = onFinalOf(P, p, ac, a);
       if (rF != null) {
         a.xOn = true;
-        return { eta: now + finalTime(P, ttg, rF), etaIaf: null, remainingNm: rF, passedIaf: true, sNew: a.sMin || 0, tIafToThr: ttg[0],
-          tFinal: ttgAt(ttg, Math.max(0, P.length - cfg.profile.finalNm)), viaDownwind: D.iaf };
+        return etaResult(P, ttg, now, finalTime(P, ttg, rF), rF, { sNew: a.sMin || 0, viaDownwind: D.iaf });
       }
       const minS = Math.max(D.sDw, a.xMin || 0);
       // Eintritt nur auf dem Downwind (bis ABEAM), nicht auf Base oder Final
       const prDw = project(P, p, minS, D.sAb);
       if (!a.xOn && prDw.cross < 1.5) a.xOn = true;
       const pr = a.xOn ? project(P, p, minS, finalAllowed(ac) ? null : P.length - cfg.profile.finalNm) : prDw;
-      let t, rem, onDw = false, sJoin = pr.s;
+      let t, rem, sJoin = pr.s;
       if (a.xOn) {
         // auf dem neuen Downwind (oder schon dort gewesen): Standardprofil ab der aktuellen Position,
         // Querablage (z. B. verlaengerter Downwind) zaehlt als Zusatzweg
-        onDw = true;
         a.xMin = Math.max(a.xMin || 0, pr.s - 0.5);
         const extra = pr.cross > 1 ? pr.cross : 0;
         t = ttgAt(ttg, pr.s) + extra / gs * 3600;
@@ -524,9 +521,195 @@
       }
       // direkt auf das (verlaengerte) Final dieser Bahn statt ueber den Downwind
       const fin = finalIntercept(ac, a, P, ttg, p);
-      if (fin && fin.t < t - 30) { t = fin.t; rem = fin.rem; onDw = true; }
-      return { eta: now + t, etaIaf: null, remainingNm: rem, passedIaf: true, sNew: a.sMin || 0, tIafToThr: ttg[0],
-        tFinal: ttgAt(ttg, Math.max(0, P.length - cfg.profile.finalNm)), viaDownwind: D.iaf };
+      if (fin && fin.t < t - 30) { t = fin.t; rem = fin.rem; }
+      return etaResult(P, ttg, now, t, rem, { sNew: a.sMin || 0, viaDownwind: D.iaf });
+    }
+
+    /** Flieger aus Sequenz und Hold-Liste nehmen. */
+    function unseq(cs) {
+      st.hold = st.hold.filter(c => c !== cs);
+      for (const s of SIDES) st.seq[s] = st.seq[s].filter(c => c !== cs);
+    }
+    /** Landung zaehlen (Statistik und Landeabstaende). */
+    function countLanding(cs, side, t) {
+      st.landed.push({ cs, side, t });
+      st.cnt[side]++;
+    }
+
+    const fin = v => typeof v === 'number' && isFinite(v);
+    /** Datensatz pruefen und bereinigen (ein NaN wuerde die ganze Sequenz verderben). Kaputte Saetze: null. */
+    function normalize(raw) {
+      if (!raw || typeof raw.cs !== 'string' || !raw.cs.trim() || !fin(raw.lat) || !fin(raw.lon)) return null;
+      if (Math.abs(raw.lat) > 90 || Math.abs(raw.lon) > 180) return null;
+      return Object.assign({}, raw, {
+        cs: raw.cs.trim().toUpperCase().slice(0, 12),
+        alt: fin(raw.alt) ? raw.alt : null, gs: fin(raw.gs) ? raw.gs : 0,
+        trk: fin(raw.trk) ? raw.trk : null, hdg: fin(raw.hdg) ? raw.hdg : null,
+        type: typeof raw.type === 'string' ? raw.type.slice(0, 4).toUpperCase() : '',
+        wtc: ['L', 'M', 'H', 'J'].indexOf(raw.wtc) >= 0 ? raw.wtc : 'M'
+      });
+    }
+
+    /** IAF und Einflugstrom eines Fliegers bestimmen. */
+    function assignIafStream(ac, a, p) {
+      // IAF: vom Plugin, sonst aus dem STAR-Namen (z. B. BETOS1A) oder der Route, sonst der naechste
+      let iafIn = ac.iaf && cfg.iafs[ac.iaf] ? ac.iaf : null;
+      if (!iafIn && typeof ac.star === 'string') iafIn = Object.keys(cfg.iafs).find(k => ac.star.toUpperCase().indexOf(k) === 0) || null;
+      if (!iafIn && typeof ac.route === 'string') { const tk = ac.route.toUpperCase().split(/[\s.\/]+/); iafIn = Object.keys(cfg.iafs).find(k => tk.indexOf(k) >= 0) || null; }
+      const iaf = iafIn || a.iaf || nearestIaf(p);
+      a.iaf = iaf;
+      // Einflugstrom (z. B. DISUN T103 BETOS oder SOTOV T101 BETOS): zuerst aus der Flugplanroute,
+      // sonst aus der Peilung vom IAF (festgehalten, sobald der Flieger naeher als 40 NM ist)
+      const strm = cfg.iafs[iaf].streams;
+      if (!strm) a.stream = null;
+      else if (ac.stream && strm[ac.stream]) a.stream = ac.stream;
+      else {
+        const byRoute = streamByRoute(strm, ac.route);
+        if (byRoute) a.stream = byRoute;
+        else if (!a.stream || !strm[a.stream] || (!a.streamByRoute && dist(p, iafXY[iaf]) > 40)) a.stream = streamFor(strm, trackDeg(iafXY[iaf], p));
+        if (byRoute) a.streamByRoute = true;
+      }
+      return iaf;
+    }
+
+    /**
+     * Bahn, Betriebsrichtung und ETA eines Fliegers: Bahn aus EuroScope, geplanter Runway Change,
+     * Bahnsperre, Wechsel auf den Downwind der anderen Bahn. Liefert { side, dir, r }.
+     */
+    function assignRunway(ac, a, iaf, now, winds, dir, ch, esMixed) {
+      // Bahn aus EuroScope: aendert der Lotse die Landebahn im Flugplan (z. B. 08R -> 08L),
+      // springt der Flieger auf die neue Bahn und wird dort nach ETA eingeplant.
+      // Nur Aenderungen zaehlen, nicht die Bahn, die EuroScope beim ersten Sehen eintraegt.
+      const esR = ac.arrRwy ? String(ac.arrRwy).toUpperCase() : null;
+      if (esR) {
+        // Nur ein Seitenwechsel in gleicher Richtung zaehlt (08R -> 08L). Traegt EuroScope nach dem
+        // Drehen der Bahn automatisch eine neue Richtung ein (26L -> 08L), passiert nichts.
+        const firstSeen = !a.esRwy && esMixed && dirOfRwy(esR) === dir;
+        if (firstSeen || (a.esRwy && esR !== a.esRwy && dirOfRwy(esR) && dirOfRwy(esR) === dirOfRwy(a.esRwy))) {
+          const sES = sideOfRwy(esR);
+          a.esByCtl = true;
+          if (sES && sES !== (a.rwySide || cfg.iafs[iaf].side)) {
+            a.rwySide = sES !== cfg.iafs[iaf].side ? sES : null;
+            a.locked = false; a.hold = false;
+            unseq(ac.cs);
+          }
+        }
+        a.esRwy = esR;
+      }
+
+      // Betriebsrichtung je Flieger: hinter dem IAF bleibt sie, wie sie war. Davor gilt bei einem
+      // geplanten Runway Change die neue Richtung fuer alle, die nach dem Zeitpunkt landen
+      // (ETA plus zuletzt geplantes Delay, mit 60 s Hysterese gegen Hin- und Herspringen).
+      let side = a.rwySide || cfg.iafs[iaf].side;
+      let acDir = dir;
+      if (a.passedIaf && a.dir) acDir = a.dir;
+      else if (ch) {
+        const rOld = computeEta(ac, a, paths[iaf][rwyId(side, dir)], now, winds);
+        const tLand = rOld.eta + (a.lastDelay || 0);
+        if (a.chId !== ch.id) { a.chId = ch.id; a.chNew = tLand >= ch.at; }
+        else if (a.chNew && tLand < ch.at - 60) a.chNew = false;
+        else if (!a.chNew && tLand > ch.at + 60) a.chNew = true;
+        acDir = a.chNew ? ch.to : dir;
+        // im Update, in dem er den IAF passiert, gilt die bisher geplante Richtung weiter
+        if (rOld.passedIaf && a.dir) acDir = a.dir;
+      }
+      let r = computeEta(ac, a, paths[iaf][rwyId(side, acDir)], now, winds);
+      // Bahn zur ETA gesperrt: auf die andere, wenn die frei ist (nicht bei manueller Bahn)
+      if (!a.rwySide && closedAt(side, r.eta)) {
+        const other = side === 'N' ? 'S' : 'N';
+        const r2 = computeEta(ac, a, paths[iaf][rwyId(other, acDir)], now, winds);
+        if (!closedAt(other, r2.eta)) { side = other; r = r2; }
+      }
+      // Hinter dem IAF auf der anderen Bahn: Rechnung ueber deren Downwind
+      if (r.passedIaf && side !== cfg.iafs[iaf].side) {
+        const rx = computeEtaX(ac, a, rwyId(side, acDir), now, winds);
+        if (rx) r = rx;
+      } else { a.xOn = false; a.xMin = 0; }
+      return { side, dir: acDir, r };
+    }
+
+    /** Sequenz je Bahn pflegen: Neue nach ETA einsortieren, echtes Ueberholen tauschen, Runway Change ordnen. */
+    function maintainSeq(items, byCs, tgtDir) {
+      for (const side of SIDES) {
+        const prev = st.seq[side].filter(cs => byCs[cs] && byCs[cs].side === side && !byCs[cs].hold);
+        const inSeq = {}; prev.forEach(cs => { inSeq[cs] = true; });
+        const newcomers = items.filter(i => i.side === side && !i.hold && !inSeq[i.cs]).sort((a, b) => a.eta - b.eta);
+        let seq = prev.slice();
+        for (const n of newcomers) {
+          // nach ETA einsortieren, aber nie vor Flieger, die eingefroren, gesperrt oder hinter dem IAF sind
+          let k = seq.length;
+          while (k > 0) {
+            const o = byCs[seq[k - 1]];
+            const fixed = st.staticMode || o.locked || o.passedIaf;
+            if (o.eta > n.eta && !fixed) k--; else break;
+          }
+          seq.splice(k, 0, n.cs);
+        }
+        // benachbarte Paare tauschen, wenn die ETA mehr als die Hysterese ueberholt
+        // Ueberholen hinter dem IAF (Abkuerzung) gilt auch im static-Modus: wer real vorn ist, ist vorn.
+        const H = cfg.defaults.hysteresisSec;
+        let changed = true, guard = 0;
+        while (changed && guard++ < 200) {
+          changed = false;
+          for (let j = 0; j < seq.length - 1; j++) {
+            const a = byCs[seq[j]], b = byCs[seq[j + 1]];
+            if (a.locked || b.locked) continue;
+            const ok = st.staticMode ? (a.passedIaf && b.passedIaf) : (b.passedIaf || !a.passedIaf);
+            if (ok && b.eta < a.eta - H) { seq[j] = b.cs; seq[j + 1] = a.cs; changed = true; }
+          }
+        }
+        // Runway Change: auf jeder Bahn zuerst alle Anfluege der alten Richtung, dann die neue
+        if (seq.some(cs => byCs[cs].dir !== tgtDir) && seq.some(cs => byCs[cs].dir === tgtDir)) {
+          seq = seq.filter(cs => byCs[cs].dir !== tgtDir).concat(seq.filter(cs => byCs[cs].dir === tgtDir));
+        }
+        st.seq[side] = seq;
+      }
+    }
+
+    /**
+     * STA berechnen. Bei einem Runway Change zuerst alle Anfluege der alten Richtung (beide Bahnen),
+     * dann die neue: der erste Flieger der neuen Richtung ist erst bei 15 NM, wenn die letzte
+     * Landung der alten Richtung erfolgt ist.
+     */
+    function schedule(byCs, ch, tgtDir, winds) {
+      const prevBy = { N: null, S: null };
+      let lastOld = null;
+      for (const phase of [0, 1]) {
+        if (phase === 1) {
+          for (const side of SIDES) for (const cs of st.seq[side]) {
+            const i = byCs[cs];
+            if (i.dir !== tgtDir) lastOld = Math.max(lastOld == null ? -Infinity : lastOld, i.sta, i.reqSta);
+          }
+        }
+        for (const side of SIDES) for (const cs of st.seq[side]) {
+          const it = byCs[cs], a = st.ac[cs];
+          if ((phase === 0) !== (it.dir !== tgtDir)) continue;
+          const prevItem = prevBy[side];
+          // reqSta = geplante Landezeit mit Staffelung (daraus das Delay, das noch aufzunehmen ist)
+          let req = it.eta;
+          if (st.staticMode && a.frozenSta && !it.passedIaf) req = Math.max(req, a.frozenSta);
+          if (prevItem) req = Math.max(req, prevItem.reqSta + sepSeconds(prevItem, it, side, it.dir, winds));
+          // Runway Change: neue Richtung erst ab dem Zeitpunkt und erst bei 15 NM, wenn die alte Richtung leer ist
+          if (ch && it.dir === ch.to) req = Math.max(req, ch.at);
+          if (phase === 1 && lastOld != null) req = Math.max(req, lastOld + (it.tFinal || 0) + cfg.defaults.rwyChangeBufferSec);
+          let guard = 0, c;
+          while ((c = closedAt(side, req)) && guard++ < 20) req = c.to;
+          // Der Streifen steht immer auf der geplanten Zeit mit voller Staffelung (FLOW, Wirbelschleppe,
+          // Landerate). Werden Zeit und Meilen kuerzer (Abkuerzung, schneller), wird die ETA kuerzer und
+          // der Streifen rueckt nach, soweit der Vordermann es zulaesst. So passen Schirm, APP-Planung
+          // und die Delay-Balken der CTR zusammen.
+          it.sta = it.reqSta = req;
+          it.delay = req - it.eta;
+          a.lastDelay = it.delay;
+          if (it.etaIaf != null) {
+            it.staIaf = req - it.tIafToThr;
+            it.delayIaf = Math.max(0, it.staIaf - it.etaIaf);
+            it.ctrStrokes = Math.round(Math.min(it.delayIaf, cfg.defaults.ctrMaxDelayMin * 60) / 60);
+          } else { it.staIaf = null; it.delayIaf = 0; it.ctrStrokes = 0; }
+          if (!st.staticMode) a.frozenSta = null;
+          prevBy[side] = it;
+        }
+      }
     }
 
     /**
@@ -541,34 +724,22 @@
       if (st.dir !== '26' && st.dir !== '08') st.dir = '26';
       const dir = st.dir;
       const ch = st.dirChange && st.dirChange.to !== dir ? st.dirChange : null;
+      const list = Array.isArray(traffic && traffic.aircraft) ? traffic.aircraft : [];
       // Vergibt EuroScope gerade beide Bahnen der aktiven Richtung, sind die Bahnen im Tag von Lotsen gesetzt:
       // dann gilt die Bahn eines Fliegers schon beim ersten Sehen (z. B. nach dem Neuladen des AMAN)
       const esSides = {};
-      for (const x of (traffic && traffic.aircraft) || []) {
+      for (const x of list) {
         const r0 = x && x.arrRwy ? String(x.arrRwy).toUpperCase() : null;
         if (r0 && dirOfRwy(r0) === dir) esSides[sideOfRwy(r0)] = true;
       }
       const esMixed = !!(esSides.N && esSides.S);
-      const seen = {};
-      const items = [];
+      const seen = {}, items = [];
 
-      const fin = v => typeof v === 'number' && isFinite(v);
-      const list = Array.isArray(traffic && traffic.aircraft) ? traffic.aircraft : [];
       for (const raw of list) {
-        // kaputte Datensaetze verwerfen, Zahlenfelder bereinigen (ein NaN wuerde die ganze Sequenz verderben)
-        if (!raw || typeof raw.cs !== 'string' || !raw.cs.trim() || !fin(raw.lat) || !fin(raw.lon)) continue;
-        if (Math.abs(raw.lat) > 90 || Math.abs(raw.lon) > 180) continue;
-        const ac = Object.assign({}, raw, {
-          cs: raw.cs.trim().toUpperCase().slice(0, 12),
-          alt: fin(raw.alt) ? raw.alt : null, gs: fin(raw.gs) ? raw.gs : 0,
-          trk: fin(raw.trk) ? raw.trk : null, hdg: fin(raw.hdg) ? raw.hdg : null,
-          type: typeof raw.type === 'string' ? raw.type.slice(0, 4).toUpperCase() : '',
-          wtc: ['L', 'M', 'H', 'J'].indexOf(raw.wtc) >= 0 ? raw.wtc : 'M'
-        });
-        if (seen[ac.cs]) continue;
+        const ac = normalize(raw);
+        if (!ac || seen[ac.cs]) continue;
         seen[ac.cs] = true;
-        let a = st.ac[ac.cs];
-        if (!a) a = st.ac[ac.cs] = {};
+        const a = st.ac[ac.cs] || (st.ac[ac.cs] = {});
         a.lastSeen = now;
         const p = proj.xy(ac.lat, ac.lon);
         // Kurs ueber Grund: aus den Daten, sonst aus der Bewegung seit dem letzten Update
@@ -578,74 +749,9 @@
           const mv = dist(a.prevP, p);
           if (mv > 0.15) { a.trk = trackDeg(a.prevP, p); a.prevP = p; }
         } else a.prevP = p;
-        // IAF: vom Plugin, sonst aus dem STAR-Namen (z. B. BETOS1A) oder der Route, sonst der naechste
-        let iafIn = ac.iaf && cfg.iafs[ac.iaf] ? ac.iaf : null;
-        if (!iafIn && typeof ac.star === 'string') iafIn = Object.keys(cfg.iafs).find(k => ac.star.toUpperCase().indexOf(k) === 0) || null;
-        if (!iafIn && typeof ac.route === 'string') { const tk = ac.route.toUpperCase().split(/[\s.\/]+/); iafIn = Object.keys(cfg.iafs).find(k => tk.indexOf(k) >= 0) || null; }
-        const iaf = iafIn || a.iaf || nearestIaf(p);
-        a.iaf = iaf;
-        // Einflugstrom (z. B. DISUN T103 BETOS oder SOTOV T101 BETOS): zuerst aus der Flugplanroute,
-        // sonst aus der Peilung vom IAF (festgehalten, sobald der Flieger naeher als 40 NM ist)
-        const strm = cfg.iafs[iaf].streams;
-        if (!strm) a.stream = null;
-        else if (ac.stream && strm[ac.stream]) a.stream = ac.stream;
-        else {
-          const byRoute = streamByRoute(strm, ac.route);
-          if (byRoute) a.stream = byRoute;
-          else if (!a.stream || !strm[a.stream] || (!a.streamByRoute && dist(p, iafXY[iaf]) > 40)) a.stream = streamFor(strm, trackDeg(iafXY[iaf], p));
-          if (byRoute) a.streamByRoute = true;
-        }
 
-        // Bahn aus EuroScope: aendert der Lotse die Landebahn im Flugplan (z. B. 08R -> 08L),
-        // springt der Flieger auf die neue Bahn und wird dort nach ETA eingeplant.
-        // Nur Aenderungen zaehlen, nicht die Bahn, die EuroScope beim ersten Sehen eintraegt.
-        const esR = ac.arrRwy ? String(ac.arrRwy).toUpperCase() : null;
-        if (esR) {
-          // Nur ein Seitenwechsel in gleicher Richtung zaehlt (08R -> 08L). Traegt EuroScope nach dem
-          // Drehen der Bahn automatisch eine neue Richtung ein (26L -> 08L), passiert nichts.
-          const firstSeen = !a.esRwy && esMixed && dirOfRwy(esR) === dir;
-          if (firstSeen || (a.esRwy && esR !== a.esRwy && dirOfRwy(esR) && dirOfRwy(esR) === dirOfRwy(a.esRwy))) {
-            const sES = sideOfRwy(esR);
-            a.esByCtl = true;
-            if (sES && sES !== (a.rwySide || cfg.iafs[iaf].side)) {
-              a.rwySide = sES !== cfg.iafs[iaf].side ? sES : null;
-              a.locked = false; a.hold = false;
-              st.hold = st.hold.filter(c => c !== ac.cs);
-              for (const s2 of SIDES) st.seq[s2] = st.seq[s2].filter(c => c !== ac.cs);
-            }
-          }
-          a.esRwy = esR;
-        }
-
-        // Betriebsrichtung je Flieger: hinter dem IAF bleibt sie, wie sie war. Davor gilt bei einem
-        // geplanten Runway Change die neue Richtung fuer alle, die nach dem Zeitpunkt landen
-        // (ETA plus zuletzt geplantes Delay, mit 60 s Hysterese gegen Hin- und Herspringen).
-        let side = a.rwySide || cfg.iafs[iaf].side;
-        let acDir = dir;
-        if (a.passedIaf && a.dir) acDir = a.dir;
-        else if (ch) {
-          const rOld = computeEta(ac, a, paths[iaf][rwyId(side, dir)], now, winds);
-          const tLand = rOld.eta + (a.lastDelay || 0);
-          if (a.chId !== ch.id) { a.chId = ch.id; a.chNew = tLand >= ch.at; }
-          else if (a.chNew && tLand < ch.at - 60) a.chNew = false;
-          else if (!a.chNew && tLand > ch.at + 60) a.chNew = true;
-          acDir = a.chNew ? ch.to : dir;
-          // im Update, in dem er den IAF passiert, gilt die bisher geplante Richtung weiter
-          if (rOld.passedIaf && a.dir) acDir = a.dir;
-        }
-        let path = paths[iaf][rwyId(side, acDir)];
-        let r = computeEta(ac, a, path, now, winds);
-        if (!a.rwySide && closedAt(side, r.eta)) {
-          const other = side === 'N' ? 'S' : 'N';
-          const p2 = paths[iaf][rwyId(other, acDir)];
-          const r2 = computeEta(ac, a, p2, now, winds);
-          if (!closedAt(other, r2.eta)) { side = other; path = p2; r = r2; }
-        }
-        // Hinter dem IAF auf der anderen Bahn: Rechnung ueber deren Downwind
-        if (r.passedIaf && side !== cfg.iafs[iaf].side) {
-          const rx = computeEtaX(ac, a, rwyId(side, acDir), now, winds);
-          if (rx) r = rx;
-        } else { a.xOn = false; a.xMin = 0; }
+        const iaf = assignIafStream(ac, a, p);
+        const { side, dir: acDir, r } = assignRunway(ac, a, iaf, now, winds, dir, ch, esMixed);
         if (r.vectored) a.vectored = true;
         a.side = side;
         a.dir = acDir;
@@ -656,17 +762,12 @@
         if (a.landed && ac.alt != null && ac.alt > cfg.elevationFt + 800 && ac.gs > 120) {
           a.landed = false; a.locked = false; a.sMin = 0; a.xMin = 0; a.xOn = false;
           const k = st.landed.findIndex(l => l.cs === ac.cs);
-          if (k >= 0) { st.cnt = st.cnt || { N: 0, S: 0 }; st.cnt[st.landed[k].side] = Math.max(0, st.cnt[st.landed[k].side] - 1); st.landed.splice(k, 1); }
+          if (k >= 0) { st.cnt[st.landed[k].side] = Math.max(0, st.cnt[st.landed[k].side] - 1); st.landed.splice(k, 1); }
         }
         // Landung erkannt
         const onGround = ac.alt != null && ac.alt < cfg.elevationFt + 60 && ac.gs < 70;
         if ((r.passedIaf && r.remainingNm < 0.4 && (ac.alt == null || ac.alt < cfg.elevationFt + 400)) || (onGround && a.captured)) {
-          if (!a.landed && a.captured) {
-            a.landed = true;
-            st.landed.push({ cs: ac.cs, side, t: now });
-            st.cnt = st.cnt || { N: 0, S: 0 };
-            st.cnt[side]++;
-          }
+          if (!a.landed && a.captured) { a.landed = true; countLanding(ac.cs, side, now); }
           continue;
         }
         if (a.landed) continue;
@@ -693,9 +794,7 @@
         // als gelandet zaehlen, ein einzelner leerer Datentakt loescht keinen Flieger
         if (!a.landed && a.captured && a.lastPassed && a.lastRem < 3 && now - (a.lastSeen || 0) >= 15) {
           a.landed = true;
-          st.landed.push({ cs, side: a.side, t: a.lastSeen });
-          st.cnt = st.cnt || { N: 0, S: 0 };
-          st.cnt[a.side]++;
+          countLanding(cs, a.side, a.lastSeen);
         }
         if (now - (a.lastSeen || 0) > cfg.defaults.lostAfterSec) delete st.ac[cs];
       }
@@ -708,92 +807,9 @@
       st.hold = st.hold.filter(cs => byCs[cs] && st.ac[cs] && st.ac[cs].hold);
       for (const i of items) if (i.hold && st.hold.indexOf(i.cs) < 0) st.hold.push(i.cs);
 
-      // Sequenz je Bahn pflegen
-      for (const side of SIDES) {
-        const prev = st.seq[side].filter(cs => byCs[cs] && byCs[cs].side === side && !byCs[cs].hold);
-        const inSeq = {}; prev.forEach(cs => { inSeq[cs] = true; });
-        const newcomers = items.filter(i => i.side === side && !i.hold && !inSeq[i.cs]).sort((a, b) => a.eta - b.eta);
-        let seq = prev.slice();
-        for (const n of newcomers) {
-          // nach ETA einsortieren, aber nie vor Flieger, die eingefroren, gesperrt oder hinter dem IAF sind
-          let k = seq.length;
-          while (k > 0) {
-            const o = byCs[seq[k - 1]];
-            const fixed = st.staticMode || o.locked || o.passedIaf;
-            if (o.eta > n.eta && !fixed) k--; else break;
-          }
-          seq.splice(k, 0, n.cs);
-        }
-        // benachbarte Paare tauschen, wenn die ETA mehr als die Hysterese ueberholt
-        // Ueberholen hinter dem IAF (Abkuerzung) gilt auch im static-Modus: wer real vorn ist, ist vorn.
-        {
-          const H = cfg.defaults.hysteresisSec;
-          let changed = true, guard = 0;
-          while (changed && guard++ < 200) {
-            changed = false;
-            for (let j = 0; j < seq.length - 1; j++) {
-              const a = byCs[seq[j]], b = byCs[seq[j + 1]];
-              if (a.locked || b.locked) continue;
-              const ok = st.staticMode ? (a.passedIaf && b.passedIaf) : (b.passedIaf || !a.passedIaf);
-              if (ok && b.eta < a.eta - H) { seq[j] = b.cs; seq[j + 1] = a.cs; changed = true; }
-            }
-          }
-        }
-        // Runway Change: auf jeder Bahn zuerst alle Anfluege der alten Richtung, dann die neue
-        const tgtDir = ch ? ch.to : dir;
-        if (seq.some(cs => byCs[cs].dir !== tgtDir) && seq.some(cs => byCs[cs].dir === tgtDir)) {
-          seq = seq.filter(cs => byCs[cs].dir !== tgtDir).concat(seq.filter(cs => byCs[cs].dir === tgtDir));
-        }
-        st.seq[side] = seq;
-
-      }
-
-      // STA berechnen. Bei einem Runway Change zuerst alle Anfluege der alten Richtung (beide Bahnen),
-      // dann die neue: der erste Flieger der neuen Richtung ist erst bei 15 NM, wenn die letzte
-      // Landung der alten Richtung erfolgt ist.
       const tgtDir = ch ? ch.to : dir;
-      const prevBy = { N: null, S: null };
-      let lastOld = null;
-      for (const phase of [0, 1]) {
-        if (phase === 1) {
-          for (const side of SIDES) for (const cs of st.seq[side]) {
-            const i = byCs[cs];
-            if (i.dir !== tgtDir) lastOld = Math.max(lastOld == null ? -Infinity : lastOld, i.sta, i.reqSta);
-          }
-        }
-        for (const side of SIDES) for (const cs of st.seq[side]) {
-          const it = byCs[cs], a = st.ac[cs];
-          if ((phase === 0) !== (it.dir !== tgtDir)) continue;
-          const prevItem = prevBy[side];
-          // reqSta = geplante Landezeit mit Staffelung (daraus das Delay, das noch aufzunehmen ist)
-          let req = it.eta;
-          if (st.staticMode && a.frozenSta && !it.passedIaf) req = Math.max(req, a.frozenSta);
-          if (prevItem) req = Math.max(req, prevItem.reqSta + sepSeconds(prevItem, it, side, it.dir, winds));
-          // Runway Change: neue Richtung erst ab dem Zeitpunkt und erst bei 15 NM, wenn die alte Richtung leer ist
-          if (ch && it.dir === ch.to) req = Math.max(req, ch.at);
-          if (phase === 1 && lastOld != null) req = Math.max(req, lastOld + (it.tFinal || 0) + cfg.defaults.rwyChangeBufferSec);
-          let guard2 = 0, c;
-          while ((c = closedAt(side, req)) && guard2++ < 20) req = c.to;
-          // Der Streifen steht immer auf der geplanten Zeit mit voller Staffelung (FLOW, Wirbelschleppe,
-          // Landerate). Werden Zeit und Meilen kuerzer (Abkuerzung, schneller), wird die ETA kuerzer und
-          // der Streifen rueckt nach, soweit der Vordermann es zulaesst. So passen Schirm, APP-Planung
-          // und die Delay-Balken der CTR zusammen.
-          const sta = req;
-          it.sta = sta;
-          it.reqSta = req;
-          it.delay = req - it.eta;
-          a.lastDelay = it.delay;
-          if (it.etaIaf != null) {
-            const staIaf = sta - it.tIafToThr;
-            it.staIaf = staIaf;
-            it.delayIaf = Math.max(0, staIaf - it.etaIaf);
-            const ctr = Math.min(it.delayIaf, cfg.defaults.ctrMaxDelayMin * 60);
-            it.ctrStrokes = Math.round(ctr / 60);
-          } else { it.staIaf = null; it.delayIaf = 0; it.ctrStrokes = 0; }
-          if (!st.staticMode) a.frozenSta = null;
-          prevBy[side] = it;
-        }
-      }
+      maintainSeq(items, byCs, tgtDir);
+      schedule(byCs, ch, tgtDir, winds);
       for (const i of items) if (i.hold) { i.sta = i.eta; i.delay = 0; }
 
       const bySide = { N: st.seq.N.map(cs => byCs[cs]), S: st.seq.S.map(cs => byCs[cs]) };
@@ -808,7 +824,7 @@
       const flw = seq.filter(i => i.sta - now <= 3600).length;
       const dem = seq.filter(i => i.eta - now <= 3600).length;
       const lands = st.landed.filter(l => l.side === side).sort((a, b) => a.t - b.t);
-      const cnt = (st.cnt && st.cnt[side]) || 0;
+      const cnt = st.cnt[side];
       const win = [60, 30, 10].map(m => {
         const L = lands.filter(l => now - l.t <= m * 60);
         let sep = 0;
@@ -826,8 +842,7 @@
     function moveTo(cs, side, index) {
       const a = st.ac[cs]; if (!a) return;
       a.hold = false;
-      st.hold = st.hold.filter(c => c !== cs);
-      for (const s of SIDES) st.seq[s] = st.seq[s].filter(c => c !== cs);
+      unseq(cs);
       const defSide = cfg.iafs[a.iaf] ? cfg.iafs[a.iaf].side : side;
       a.rwySide = side !== defSide ? side : (a.rwySide && a.rwySide !== side ? null : a.rwySide);
       a.side = side;
@@ -856,8 +871,8 @@
     function toHold(cs) {
       const a = st.ac[cs]; if (!a) return;
       a.hold = true; a.locked = false;
-      for (const s of SIDES) st.seq[s] = st.seq[s].filter(c => c !== cs);
-      if (st.hold.indexOf(cs) < 0) st.hold.push(cs);
+      unseq(cs);
+      st.hold.push(cs);
     }
     /** Einen Flieger neu planen: Hold, manuelle Bahn und Position aufheben, nach ETA neu einsortieren. */
     function recomputeOne(cs) {
@@ -866,8 +881,7 @@
       // hat der Lotse in EuroScope eine Bahn gesetzt, gilt die, sonst der Standard nach IAF
       const sES = a.esByCtl && a.esRwy ? sideOfRwy(a.esRwy) : null;
       a.rwySide = sES && a.iaf && cfg.iafs[a.iaf] && sES !== cfg.iafs[a.iaf].side ? sES : null;
-      st.hold = st.hold.filter(c => c !== cs);
-      for (const s of SIDES) st.seq[s] = st.seq[s].filter(c => c !== cs);
+      unseq(cs);
     }
     function recompute() {
       for (const cs of st.hold) if (st.ac[cs]) st.ac[cs].hold = false;
@@ -925,5 +939,9 @@
     return own.id;
   }
 
-  return { createEngine, sanitizeState, downwindPaths, rayHit, rayHits, streamByRoute, roleFor, ctrSector, parseMetarWind, makeProjection, headwind, tasFromIas, preparePaths, pointAt };
+  return {
+    createEngine, sanitizeState, downwindPaths, streamByRoute, roleFor, ctrSector, parseMetarWind, makeProjection, preparePaths, pointAt,
+    // gemeinsam mit der Simulation
+    headwind, tasFromIas, trackDeg, angDiff, altAt, profileIas, vappFor, rayHit, rayHits, finalGeo, finalCross
+  };
 });

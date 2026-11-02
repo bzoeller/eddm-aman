@@ -123,7 +123,7 @@
             ac.x = I.x; ac.y = I.y; ac.phase = 'path'; ac.s = 0;
           } else {
             ac.x += dx / d * move; ac.y += dy / d * move;
-            ac.hdg = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+            ac.hdg = Core.trackDeg(ac, I);
           }
           ac.alt = altFor(ac, Math.max(0, d - move));
         } else if (ac.phase === 'path') {
@@ -139,22 +139,11 @@
             for (let sx = D.sDw; sx < D.sAb; sx += 0.5) { const q = Core.pointAt(D.path, sx); const dd = Math.hypot(q.x - ac.x, q.y - ac.y); if (!best || dd < best.d) best = { s: sx, d: dd }; }
             // kreuzt der Weg dorthin die verlaengerte Anfluglinie ab 8 NM, dreht APP den Flieger direkt aufs Final
             // (dieselbe Regel wie im AMAN)
-            {
-              const P2 = D.path, fi = P2.pts.findIndex(q => q.name === 'FAP15');
-              const thr = P2.pts[P2.pts.length - 1], fap = P2.pts[fi], Lf = Math.hypot(fap.x - thr.x, fap.y - thr.y) || 1;
-              const ox = (fap.x - thr.x) / Lf, oy = (fap.y - thr.y) / Lf;
-              const J = Core.pointAt(P2, Math.min(D.sAb, best.s + 3));
-              const vx = J.x - ac.x, vy = J.y - ac.y;
-              const ex = ox * 30, ey = oy * 30, den = vx * ey - vy * ex;
-              if (fi > 0 && Math.abs(den) > 1e-6) {
-                const wx = thr.x - ac.x, wy = thr.y - ac.y;
-                const u = (wx * ey - wy * ex) / den, f = (wx * vy - wy * vx) / den;
-                if (u > 0 && u < 1 && f * 30 >= 8 && f <= 1) {
-                  const r = Math.min(15, f * 30);
-                  ac.phase = 'direct'; ac.path = P2; ac.sT = P2.length - r; ac.rwy = rwy;
-                  continue;
-                }
-              }
+            const G = Core.finalGeo(D.path), J = Core.pointAt(D.path, Math.min(D.sAb, best.s + 3));
+            const x = G && Core.finalCross(G, ac, J.x - ac.x, J.y - ac.y);
+            if (x && x.u > 0 && x.u < 1 && x.r >= cfg.defaults.finalInterceptMinNm && x.r <= 30) {
+              ac.phase = 'direct'; ac.path = D.path; ac.sT = D.path.length - Math.min(cfg.profile.finalNm, x.r); ac.rwy = rwy;
+              continue;
             }
             ac.phase = 'direct'; ac.path = D.path; ac.sT = Math.min(D.sAb, best.s + 3); ac.rwy = rwy;
             continue;
@@ -163,10 +152,9 @@
           if (ac.rwy && ac.rwy !== rwy) ac.s = Math.min(ac.s, path.length - 1);
           ac.rwy = rwy;
           const r = path.length - ac.s;
-          const vapp = cfg.vapp.types[ac.type] || cfg.vapp.wtc[ac.wtc];
           const P = cfg.profile;
-          const ias = r > P.finalNm ? P.downwind : r > P.finalSlowNm ? P.final + (P.fap - P.final) * (r - P.finalSlowNm) / (P.finalNm - P.finalSlowNm) : vapp + (P.final - vapp) * r / P.finalSlowNm;
-          const alt = Math.min(10000, cfg.elevationFt + r * 318);
+          const ias = Core.profileIas(cfg, r, Core.vappFor(cfg, ac));
+          const alt = Core.altAt(cfg, r);
           const trkNow = Core.pointAt(path, ac.s).trk;
           const w = r > P.finalNm ? sim.wind.aloft : sim.wind.surface;
           let gs = Math.max(80, Core.tasFromIas(ias, alt) - Core.headwind(trkNow, w));
@@ -230,7 +218,7 @@
         if (ac.phase !== 'direct') continue;
         const T = Core.pointAt(ac.path, ac.sT);
         const dx = T.x - ac.x, dy = T.y - ac.y, d = Math.hypot(dx, dy);
-        const trk = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+        const trk = Core.trackDeg(ac, T);
         const w = sim.wind.aloft;
         const gs = Math.max(120, Core.tasFromIas(cfg.profile.downwind, ac.alt) - Core.headwind(trk, w));
         const move = gs * dt / 3600;

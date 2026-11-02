@@ -211,8 +211,16 @@
     }
     return out;
   }
+  // einmal je Datenstand berechnen: viewKey, Spalten und Zeichnen fragen mehrfach nach
+  let dynMemo = null;
   function dynView() {
     const cs = me && me.callsign ? String(me.callsign).toUpperCase() : null;
+    if (dynMemo && dynMemo.last === engine.last && dynMemo.cs === cs) return dynMemo.v;
+    const v = computeDynView(cs);
+    dynMemo = { last: engine.last, cs, v };
+    return v;
+  }
+  function computeDynView(cs) {
     if (!cs || simApi || !engine.last.list || !isCtrCs(cs)) return null;
     const now = engine.last.now;
     // 1) Tracking: wer den naechsten Flieger eines Stroms vor dem IAF trackt, arbeitet den Strom
@@ -504,11 +512,11 @@
     if (v !== curView) buildColumns(v);
     const st = engine.state, last = engine.last;
     const editable = canEdit();
+    const view = ctrView(v);   // CTR-Ansicht oder null (APP/TWR)
 
     drawScale();
-    if (isCtrView(v)) {
+    if (view) {
       const c = colEls.C;
-      const view = ctrView(v);
       const items = last.list.filter(i => showsItem(view, i) && !i.passedIaf && !i.hold && i.staIaf != null).map(i => Object.assign(i, { _t: i.staIaf }));
       drawColumn(c, items, 'ctr', view);
       c.tag.classList.toggle('on', st.staticMode); c.tag.textContent = st.staticMode ? 'static' : 'dynamic'; c.tag.disabled = true;
