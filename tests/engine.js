@@ -1,0 +1,111 @@
+// Rechenkern-Test mit der Simulation (ohne Browser). Aufruf: node tests/engine.js
+const path = require('path');
+const root = path.join(__dirname, '..');
+const Core = require(path.join(root, 'aman-core.js'));
+const Sim = require(path.join(root, 'aman-sim.js'));
+const cfg = require(path.join(root, 'eddm.json'));
+let fails = 0;
+const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m); };
+const T0 = 1800000000;
+
+function run(eng, sim, n, every, cb) {
+  for (let i = 0; i < n; i++) {
+    if (i % every === 0) eng.update(sim.traffic(), sim.sim.t, sim.sim.wind);
+    sim.sim.dir = eng.state.dir;
+    const before = {}; for (const a of sim.sim.aircraft) before[a.cs] = a;
+    sim.step(2, eng.last);
+    if (cb) cb(before);
+  }
+}
+
+// 1) Normalbetrieb 26 und 08: Landeabstaende in der Simulation
+for (const D of ['26', '08']) {
+  const eng = Core.createEngine(cfg, { dir: D }), sim = Sim.createSim(cfg, { seed: 9, rate: 50, start: T0, dir: D });
+  sim.prefill();
+  const lands = [];
+  run(eng, sim, 3000, 2, before => {
+    const now = new Set(sim.sim.aircraft.map(a => a.cs));
+    for (const cs of Object.keys(before)) if (!now.has(cs) && sim.sim.t > T0 + 1800) lands.push({ rwy: before[cs].rwy, t: sim.sim.t });
+  });
+  let mn = 1e9;
+  for (const r of Object.values(cfg.runways).map(x => x.ids[D])) {
+    const t = lands.filter(l => l.rwy === r).map(l => l.t).sort((a, b) => a - b);
+    for (let k = 1; k < t.length; k++) mn = Math.min(mn, t[k] - t[k - 1]);
+  }
+  ok(lands.length > 50 && mn >= 80, 'Richtung ' + D + ': ' + lands.length + ' Landungen, kleinster Abstand ' + mn + ' s');
+}
+
+// 2) Runway Change 26 -> 08 in 25 min
+{
+  const eng = Core.createEngine(cfg), sim = Sim.createSim(cfg, { seed: 21, rate: 50, start: T0 });
+  sim.prefill();
+  run(eng, sim, 300, 1);
+  const at = sim.sim.t + 25 * 60;
+  eng.setDirChange('08', at);
+  const L = eng.update(sim.traffic(), sim.sim.t, sim.sim.wind);
+  ok(L.dirChange && L.dirChange.to === '08', 'geplanter Wechsel steht in last.dirChange (fuer die gruene Linie)');
+  ok(L.list.filter(i => !i.passedIaf && i.sta > at + 120).every(i => i.dir === '08'), 'Anfluege nach dem Zeitpunkt sind auf 08 geplant');
+  const P = Core.preparePaths(cfg, Core.makeProjection(cfg.wind.lat, cfg.wind.lon));
+  const lands = [], at15 = {};
+  let switched = null;
+  run(eng, sim, 1800, 2, before => {
+    if (!switched && eng.state.dir === '08') switched = sim.sim.t;
+    for (const a of sim.sim.aircraft) if (a.phase === 'path' && a.rwy && !at15[a.cs]) { const p = (a.pathRef && a.pathRef.rwy === a.rwy) ? a.pathRef : P[a.iaf][a.rwy]; if (p.length - a.s <= 15) at15[a.cs] = { t: sim.sim.t, rwy: a.rwy }; }
+    const now = new Set(sim.sim.aircraft.map(a => a.cs));
+    for (const cs of Object.keys(before)) if (!now.has(cs)) lands.push({ rwy: before[cs].rwy, t: sim.sim.t });
+  });
+  ok(switched && Math.abs(switched - at) <= 10, 'Richtung wechselt automatisch zum Zeitpunkt');
+  ok(!lands.some(l => /^08/.test(l.rwy) && l.t < at - 20), 'niemand landet vor dem Zeitpunkt auf 08');
+  const lastOld = Math.max(...lands.filter(l => /^26/.test(l.rwy)).map(l => l.t));
+  const firstNew15 = Math.min(...Object.values(at15).filter(x => /^08/.test(x.rwy)).map(x => x.t));
+  ok(firstNew15 >= lastOld, 'letzte 26-Landung vor dem ersten 08-Flieger bei 15 NM (' + Math.round(firstNew15 - lastOld) + ' s Abstand)');
+}
+
+// 3) Lotse aendert in EuroScope 08R -> 08L: AMAN plant sofort auf 08L, Rechnung ueber den Nord-Downwind
+{
+  let checked = 0;
+  for (const seed of [4, 23, 42]) {
+    const eng = Core.createEngine(cfg, { dir: '08' }), sim = Sim.createSim(cfg, { seed, rate: 40, start: T0, dir: '08' });
+    sim.prefill();
+    run(eng, sim, 400, 1);
+    const c = eng.last.list.find(i => i.side === 'S' && i.passedIaf && i.remainingNm > 40 && i.remainingNm < 60);
+    if (!c) continue;
+    sim.setRunway(c.cs, '08L');
+    let first = null, onDw = null, landed = null, rwy = null;
+    for (let i = 0; i < 1500 && !landed; i++) {
+      if (i % 2 === 0) { const it = eng.update(sim.traffic(), sim.sim.t, sim.sim.wind).byCs[c.cs]; if (it) { if (!first) first = it; if (!it.xfer && !onDw) onDw = Object.assign({}, it); } }
+      const a = sim.sim.aircraft.find(x => x.cs === c.cs); if (a) rwy = a.rwy;
+      sim.step(2, eng.last);
+      if (!sim.sim.aircraft.find(x => x.cs === c.cs)) landed = sim.sim.t;
+    }
+    checked++;
+    ok(first && first.rwy === '08L' && first.side === 'N', c.cs + ': nach der Aenderung sofort auf 08L geplant');
+    ok(rwy === '08L' && onDw && Math.abs(onDw.reqSta - landed) <= 60, c.cs + ': auf dem Nord-Downwind geplante Zeit auf ' + Math.round(Math.abs(onDw.reqSta - landed)) + ' s genau');
+  }
+  ok(checked >= 2, 'genug Faelle fuer den Bahnwechsel geprueft (' + checked + ')');
+}
+
+// 4) Erste Bahn aus EuroScope loest nichts aus, und die Standardplanung ist Sued/Sued, Nord/Nord
+{
+  const eng = Core.createEngine(cfg, { dir: '26' });
+  const p = Core.makeProjection(cfg.wind.lat, cfg.wind.lon);
+  const at = (iaf, d) => { const I = p.xy(cfg.iafs[iaf].lat, cfg.iafs[iaf].lon); return p.ll(I.x, I.y + d); };
+  const L = eng.update({ aircraft: [
+    Object.assign({ cs: 'T1', type: 'A320', wtc: 'M', alt: 20000, gs: 400, iaf: 'BETOS', arrRwy: '26R' }, at('BETOS', -60)),
+    Object.assign({ cs: 'T2', type: 'A320', wtc: 'M', alt: 20000, gs: 400, iaf: 'ROKIL', arrRwy: '26R' }, at('ROKIL', 60))
+  ] }, T0, {});
+  ok(L.byCs.T1.side === 'S' && L.byCs.T2.side === 'N', 'Standard: BETOS auf Sued, ROKIL auf Nord, auch wenn EuroScope anfangs 26R eintraegt');
+}
+
+// 5) Final erst ab 7000 ft: hoch ueber der Anfluglinie zaehlt nicht als Final
+{
+  const eng = Core.createEngine(cfg, { dir: '26' });
+  const P = eng.paths.ROKIL['26R'];
+  const q = Core.pointAt(P, P.length - 8), ll = eng.proj.ll(q.x, q.y);
+  const mk = alt => ({ cs: 'H' + alt, type: 'A320', wtc: 'M', alt, gs: 250, hdg: 0, iaf: 'ROKIL', passedIaf: true, lat: ll.lat, lon: ll.lon });
+  const L = eng.update({ aircraft: [mk(9000), mk(4000)] }, T0, {});
+  ok(L.byCs.H4000.remainingNm < 10 && L.byCs.H9000.remainingNm > 14, 'auf 8 NM Final: 4000 ft = ' + L.byCs.H4000.remainingNm.toFixed(0) + ' NM, 9000 ft nicht auf dem Final = ' + L.byCs.H9000.remainingNm.toFixed(0) + ' NM');
+}
+
+console.log(fails ? fails + ' Fehler' : 'alles gruen');
+process.exit(fails ? 1 : 0);

@@ -1160,7 +1160,7 @@
   "fap": 200,
   "final": 170,
   "finalSlowNm": 5,
-  "finalNm": 15
+  "finalNm": 15, "finalMaxAltFt": 7000
  },
  "vapp": {
   "wtc": {

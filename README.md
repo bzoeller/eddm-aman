@@ -15,7 +15,7 @@ Danach im Browser `http://localhost:8090/` öffnen. Ohne EuroScope läuft automa
 ## Datenquellen
 
 - **Simulation:** erzeugt Anflugverkehr über die vier IAFs, einstellbar im MENU (Rate, Tempo, Bodenwind).
-- **EuroScope-Plugin:** Wird die Seite vom Plugin unter `http://127.0.0.1:8471/` ausgeliefert, holt sie den Verkehr alle 5 Sekunden von `/api/traffic`. Die Rolle (APP, TWR, CTR) folgt aus dem eigenen Callsign. Optional kann das Plugin pro Flieger `route` (Flugplanroute), `trk` (Kurs über Grund) und `stream` (`DISUN`, `SOTOV`, `AMADI`, `REDBU`) sowie eine Liste `controllers` der eingeloggten Callsigns mitschicken.
+- **EuroScope-Plugin:** Wird die Seite vom Plugin unter `http://127.0.0.1:8471/` ausgeliefert, holt sie den Verkehr alle 5 Sekunden von `/api/traffic`. Die Rolle (APP, TWR, CTR) folgt aus dem eigenen Callsign. Optional kann das Plugin pro Flieger `arrRwy` (Landebahn aus Flugplan bzw. Tag), `route` (Flugplanroute), `trk` (Kurs über Grund) und `stream` (`DISUN`, `SOTOV`, `AMADI`, `REDBU`) sowie eine Liste `controllers` der eingeloggten Callsigns mitschicken.
 
 ## CTR-Ansichten und Ströme
 
@@ -68,6 +68,15 @@ Beides stellt APP über einen Klick auf den RWY-Kasten ein. Alle Zeiten sind UTC
   - Die Betriebsrichtung kommt nur aus dem AMAN. Eine gedrehte Bahn in EuroScope ändert am AMAN nichts. Weicht sie ab, steht am Rand rot `RWY MISMATCH: EuroScope 08, AMAN 26`.
 - **Bahnsperre:** Bahn (Nord, Süd oder beide), Beginn „ab jetzt“ oder „um HH:MM“, Ende „um HH:MM“. Gesperrte Zeiten sind orange schraffiert, Anflüge weichen auf die andere Bahn aus oder werden hinter die Sperre geplant. Aufheben geht in der Liste im Dialog oder per „SPERRE AUFHEBEN“ am Schirm.
 
+## Bahn aus EuroScope und Wechsel auf den anderen Downwind
+
+- **Standard:** Süd/Süd und Nord/Nord, also BETOS und NAPSA auf die Südbahn, ROKIL und LANDU auf die Nordbahn.
+- **Änderung durch den Lotsen:** Ändert der Lotse in EuroScope die Landebahn eines Fliegers (Feld `arrRwy` vom Plugin, z. B. 08R → 08L), springt der Flieger im AMAN beim nächsten Update auf die neue Bahn und wird dort nach ETA eingeplant. Nur Änderungen zählen, nicht die Bahn, die EuroScope beim ersten Sehen einträgt.
+- **Vektoren auf den anderen Downwind:** Ist der Flieger schon hinter dem IAF, rechnet das AMAN mit Vektoren auf den Downwind der neuen Bahn. Nord ist DM428–DM422 (08L) bzw. DM421–DM427 (26R), Süd ist DM458–DM452 (08R) bzw. DM452–DM457 (26L).
+  - Bis dorthin zählt der direkte Weg nach Kurs (sonst der kürzeste Weg) zum Eintrittspunkt auf dem neuen Downwind. Base und Final sind als Eintritt ausgeschlossen.
+  - Ab Erreichen des neuen Downwinds gilt das Standardprofil von dort.
+- **Final erst ab 7000 ft:** Ein Flieger gilt erst ab 7000 ft oder darunter als auf dem Final (`profile.finalMaxAltFt`). Wer höher die Anfluglinie kreuzt, wird nicht aufs Final gerechnet.
+
 ## Downwind und Final
 
 Hinter dem IAF steht der Streifen auf der aktuellen Vorhersage. Werden Zeit und Meilen kürzer, rückt er sofort nach, auch im static-Modus. Das passiert etwa, wenn APP früh auf den Base oder direkt aufs Final dreht. Das AMAN erkennt das am Kurs: Schneidet er den Standardpfad weiter vorn und spart dabei mindestens 2 NM (`shortcutMinNm`), rechnet es mit dem kürzeren Weg. Ein Streifen rückt nie näher als die Mindeststaffelung an den Vordermann (2,5 NM oder Wirbelschleppe, `minRadarSepNm`). Überholt ein Flieger einen anderen wirklich, tauschen beide in der Sequenz. Manuell platzierte Flieger bleiben, wo sie sind.
@@ -83,6 +92,7 @@ Hinter dem IAF steht der Streifen auf der aktuellen Vorhersage. Werden Zeit und 
 | `eddm.json` | Flughafendaten: Bahnen, IAFs, Pfade, Speedprofil, Wirbelschleppen |
 | `style.css` | Darstellung, dunkel und hell |
 | `tests/func.js` | Browsertest mit Playwright |
+| `tests/engine.js` | Rechenkern-Test mit der Simulation: Landeabstände, Runway Change mit 15-NM-Regel, Bahnwechsel aus EuroScope, 7000-ft-Grenze |
 
 ## Test
 
@@ -91,6 +101,10 @@ python3 -m http.server 8090 &
 node tests/func.js
 ```
 
-Braucht Node und Playwright (`npm install playwright`).
+Braucht Node und Playwright (`npm install playwright`). Der Rechenkern-Test läuft ohne Browser und ohne Webserver:
+
+```bash
+node tests/engine.js
+```
 
 Hinweis: Nur für die Simulation und VATSIM, nicht für den echten Flugbetrieb.

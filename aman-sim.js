@@ -29,6 +29,7 @@
     let rnd = opts.seed != null ? mulberry(opts.seed) : Math.random;
     const proj = Core.makeProjection(cfg.wind.lat, cfg.wind.lon);
     const paths = Core.preparePaths(cfg, proj);
+    const dwPaths = Core.downwindPaths(cfg, paths);
     const sim = {
       t: opts.start || Math.floor(Date.now() / 1000),
       rate: opts.rate || 40,
@@ -64,7 +65,8 @@
         cs: callsign(), type: t[0], wtc: t[1], iaf, route: inb[1],
         x: I.x + Math.sin(brg) * d, y: I.y + Math.cos(brg) * d,
         alt: 0, gs: 0, phase: 'enroute', s: 0, d0: Math.max(d, 60),
-        cut: rnd() < 0.35 // APP dreht diesen Flieger frueh auf das Final, wenn er kein Delay hat
+        cut: rnd() < 0.35, // APP dreht diesen Flieger frueh auf das Final, wenn er kein Delay hat
+        esRwy: cfg.runways[cfg.iafs[iaf].side].ids[sim.dir] // Landebahn im Flugplan wie in EuroScope
       };
       ac.alt = altFor(ac, d);
       sim.aircraft.push(ac);
@@ -124,7 +126,18 @@
         } else if (ac.phase === 'path') {
           // ohne AMAN-Info (z. B. kurz vor dem Aufsetzen schon als gelandet gezaehlt) bleibt die Bahn
           const rwy = (info && info.rwy) || ac.rwy || cfg.runways[cfg.iafs[ac.iaf].side].ids[sim.dir];
-          const path = paths[ac.iaf][rwy];
+          // andere Bahn als ueber den IAF vorgesehen: per Vektoren auf deren Downwind
+          const native = cfg.iafs[ac.iaf].side;
+          const onOther = info && info.side && info.side !== native;
+          if (onOther && (!ac.pathRef || ac.pathRef.rwy !== rwy) && dwPaths[rwy]) {
+            const D = dwPaths[rwy];
+            // Eintritt auf dem neuen Downwind etwas voraus: naechster Punkt plus 3 NM
+            let best = null;
+            for (let sx = D.sDw; sx < D.sAb; sx += 0.5) { const q = Core.pointAt(D.path, sx); const dd = Math.hypot(q.x - ac.x, q.y - ac.y); if (!best || dd < best.d) best = { s: sx, d: dd }; }
+            ac.phase = 'direct'; ac.path = D.path; ac.sT = Math.min(D.sAb, best.s + 3); ac.rwy = rwy;
+            continue;
+          }
+          const path = ac.pathRef && ac.pathRef.rwy === rwy ? ac.pathRef : paths[ac.iaf][rwy];
           if (ac.rwy && ac.rwy !== rwy) ac.s = Math.min(ac.s, path.length - 1);
           ac.rwy = rwy;
           const r = path.length - ac.s;
@@ -182,7 +195,7 @@
         const gs = Math.max(120, Core.tasFromIas(cfg.profile.downwind, ac.alt) - Core.headwind(trk, w));
         const move = gs * dt / 3600;
         ac.gs = gs; ac.hdg = trk;
-        if (move >= d) { ac.x = T.x; ac.y = T.y; ac.s = ac.sT; ac.phase = 'path'; }
+        if (move >= d) { ac.x = T.x; ac.y = T.y; ac.s = ac.sT; ac.phase = 'path'; ac.pathRef = ac.path; }
         else { ac.x += dx / d * move; ac.y += dy / d * move; }
         ac.alt = Math.max(cfg.elevationFt + 3000, ac.alt - 1200 * dt / 60);
       }
@@ -196,12 +209,15 @@
         // keine activeDir: in der Simulation gibt es kein EuroScope, das eine Richtung melden koennte
         aircraft: sim.aircraft.map(a => {
           const p = proj.ll(a.x, a.y);
-          return { cs: a.cs, type: a.type, wtc: a.wtc, lat: p.lat, lon: p.lon, alt: Math.round(a.alt), gs: Math.round(a.gs), hdg: a.hdg, iaf: a.iaf, route: a.route, passedIaf: a.phase === 'path' || a.phase === 'direct' };
+          return { cs: a.cs, type: a.type, wtc: a.wtc, lat: p.lat, lon: p.lon, alt: Math.round(a.alt), gs: Math.round(a.gs), hdg: a.hdg, iaf: a.iaf, route: a.route, arrRwy: a.esRwy || undefined, passedIaf: a.phase === 'path' || a.phase === 'direct' };
         })
       };
     }
 
-    return { sim, step, traffic, prefill, spawn };
+    /** Wie ein Lotse in EuroScope: Landebahn im Flugplan eines Fliegers aendern. */
+    function setRunway(cs, rwy) { const a = sim.aircraft.find(x => x.cs === cs); if (a) a.esRwy = rwy; return !!a; }
+
+    return { sim, step, traffic, prefill, spawn, setRunway };
   }
 
   function mulberry(a) {

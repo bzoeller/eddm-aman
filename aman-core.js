@@ -70,17 +70,20 @@
     return { x: a.x + f * (b.x - a.x), y: a.y + f * (b.y - a.y), trk: trackDeg(a, b) };
   }
 
-  /** Projektion einer Position auf den Pfad, nur vorwaerts ab minS. */
-  function project(path, p, minS) {
+  /** Projektion einer Position auf den Pfad, nur vorwaerts ab minS (und optional nur bis maxS). */
+  function project(path, p, minS, maxS) {
     let best = null;
+    if (maxS == null) maxS = path.length;
     for (let i = 1; i < path.pts.length; i++) {
       if (path.cum[i] < minS) continue;
+      if (path.cum[i - 1] >= maxS) break;
       const a = path.pts[i - 1], b = path.pts[i];
       const vx = b.x - a.x, vy = b.y - a.y, L2 = vx * vx + vy * vy || 1;
       let t = ((p.x - a.x) * vx + (p.y - a.y) * vy) / L2;
       t = Math.max(0, Math.min(1, t));
       let s = path.cum[i - 1] + t * (path.cum[i] - path.cum[i - 1]);
       if (s < minS) s = minS;
+      if (s > maxS) s = maxS;
       const q = pointAt(path, s);
       const d = Math.hypot(p.x - q.x, p.y - q.y);
       if (!best || d < best.cross) best = { s, cross: d };
@@ -92,11 +95,13 @@
    * Erster Schnittpunkt eines Strahls (Position, Kurs) mit dem Pfad hinter minS.
    * Liefert { s, d } (Pfadposition und Direktentfernung) oder null.
    */
-  function rayHit(path, p, trk, minS, maxD) {
+  function rayHit(path, p, trk, minS, maxD, maxS) {
+    if (maxS == null) maxS = path.length;
     const ux = Math.sin(trk * Math.PI / 180), uy = Math.cos(trk * Math.PI / 180);
     let best = null;
     for (let i = 1; i < path.pts.length; i++) {
       if (path.cum[i] <= minS) continue;
+      if (path.cum[i - 1] >= maxS) break;
       const a = path.pts[i - 1], b = path.pts[i];
       const ex = b.x - a.x, ey = b.y - a.y;
       const den = ux * ey - uy * ex;
@@ -106,10 +111,43 @@
       const t = (wx * uy - wy * ux) / den;   // Anteil auf dem Segment
       if (u < 0.3 || u > maxD || t < 0 || t > 1) continue;
       const sHit = path.cum[i - 1] + t * (path.cum[i] - path.cum[i - 1]);
-      if (sHit <= minS) continue;
+      if (sHit <= minS || sHit > maxS) continue;
       if (!best || u < best.d) best = { s: sHit, d: u };
     }
     return best;
+  }
+
+  /**
+   * Downwind-Pfad je Bahn: Standardpfad eines IAF, der normal auf diese Bahn fuehrt (Nord: ROKIL/LANDU,
+   * Sued: BETOS/NAPSA), ab Beginn des Downwinds (Segmente gegen die Landerichtung bis ABEAM).
+   * Wird ein Flieger auf den Downwind der anderen Bahn gefuehrt, rechnet das AMAN ab dort mit diesem Profil.
+   */
+  function downwindPaths(cfg, paths) {
+    const out = {};
+    for (const side of ['N', 'S']) {
+      for (const dir of Object.keys(cfg.runways[side].ids)) {
+        const rwy = cfg.runways[side].ids[dir];
+        const recip = (cfg.runways[side].heading[dir] + 180) % 360;
+        let best = null;
+        for (const iaf of Object.keys(cfg.iafs)) {
+          if (cfg.iafs[iaf].side !== side || !paths[iaf] || !paths[iaf][rwy]) continue;
+          const P = paths[iaf][rwy];
+          let iA = P.pts.findIndex(q => q.name === 'ABEAM');
+          if (iA < 1) iA = Math.max(1, P.pts.length - 3);
+          let i = iA;
+          while (i > 1) {
+            const d = Math.abs(((trackDeg(P.pts[i - 2], P.pts[i - 1]) - recip) % 360 + 540) % 360 - 180);
+            if (d > 35) break;
+            i--;
+          }
+          const sDw = P.cum[i - 1];
+          const dwLen = P.cum[iA] - sDw;
+          if (!best || dwLen > best.dwLen) best = { rwy, iaf, path: P, sDw, sAb: P.cum[iA], dwLen };
+        }
+        if (best) out[rwy] = best;
+      }
+    }
+    return out;
   }
 
   // ---------- Speedprofil ----------
@@ -212,6 +250,7 @@
   function createEngine(cfg, savedState) {
     const proj = makeProjection(cfg.wind.lat, cfg.wind.lon);
     const paths = preparePaths(cfg, proj);
+    const dwPaths = downwindPaths(cfg, paths);
     const st = Object.assign(defaultState(cfg), savedState || {});
     let last = { list: [], bySide: { N: [], S: [] }, byCs: {}, now: 0 };
 
@@ -224,6 +263,7 @@
     }
 
     function rwyId(side, dir) { return cfg.runways[side].ids[dir]; }
+    function sideOfRwy(r) { return SIDES.find(sd => Object.values(cfg.runways[sd].ids).indexOf(r) >= 0) || null; }
     function closedAt(side, t) {
       return st.closures.find(c => c.side === side && t >= c.from && t < c.to) || null;
     }
@@ -256,6 +296,9 @@
       return Math.max(t, 3600 / Math.max(1, st.rate[side]));
     }
 
+    /** Ist der Flieger tief genug, um auf dem Final zu sein (Standard 7000 ft oder darunter)? */
+    function finalAllowed(ac) { return ac.alt == null || ac.alt <= (cfg.profile.finalMaxAltFt || 7000); }
+
     /** Mindestabstand (Radar oder Wirbelschleppe) in Sekunden, ohne FLOW und Landerate. */
     function minSepSeconds(lead, foll, side, dir, winds) {
       const nm = Math.max(cfg.defaults.minRadarSepNm || 2.5, wakeNm(lead, foll));
@@ -279,7 +322,8 @@
         if (toIafDirect < 2.5 || (pr.s > 2 && pr.cross < 6)) passed = true;
       }
       if (passed) {
-        pr = project(path, p, a.sMin || 0);
+        // Final erst ab 7000 ft oder darunter: hoeher wird nur bis zum Beginn des Finals projiziert
+        pr = project(path, p, a.sMin || 0, finalAllowed(ac) ? null : path.length - cfg.profile.finalNm);
         const along = effRemaining(cfg, path, pr.s);
         // Querabweichung (Vektoren, Delay) zaehlt als zusaetzliche Strecke zurueck auf den Pfad
         const extra = pr.cross > 1 ? pr.cross : 0;
@@ -305,6 +349,44 @@
       }
       const tIaf = dIaf / gs * 3600;
       return { eta: now + tIaf + ttg[0], etaIaf: now + tIaf, remainingNm: dIaf + effRemaining(cfg, path, 0), passedIaf: false, sNew: 0, tIafToThr: ttg[0], tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) };
+    }
+
+    /**
+     * ETA fuer einen Flieger hinter dem IAF, der auf die andere Bahn geht und per Vektoren auf deren
+     * Downwind gefuehrt wird. Auf dem neuen Downwind: Standardprofil ab dort. Davor: direkt (nach Kurs,
+     * sonst kuerzester Weg) zum Eintrittspunkt auf dem neuen Downwind, dann Standardprofil.
+     */
+    function computeEtaX(ac, a, rwy, now, winds) {
+      const D = dwPaths[rwy];
+      if (!D) return null;
+      const P = D.path, p = proj.xy(ac.lat, ac.lon);
+      const ttg = timeTable(cfg, P, vappFor(cfg, ac), winds);
+      const gs = ac.gs > 60 ? ac.gs : 200;
+      const minS = Math.max(D.sDw, a.xMin || 0);
+      // Eintritt nur auf dem Downwind (bis ABEAM), nicht auf Base oder Final
+      const prDw = project(P, p, minS, D.sAb);
+      if (!a.xOn && prDw.cross < 1.5) a.xOn = true;
+      const pr = a.xOn ? project(P, p, minS, finalAllowed(ac) ? null : P.length - cfg.profile.finalNm) : prDw;
+      let t, rem, onDw = false, sJoin = pr.s;
+      if (a.xOn) {
+        // auf dem neuen Downwind (oder schon dort gewesen): Standardprofil ab der aktuellen Position,
+        // Querablage (z. B. verlaengerter Downwind) zaehlt als Zusatzweg
+        onDw = true;
+        a.xMin = Math.max(a.xMin || 0, pr.s - 0.5);
+        const extra = pr.cross > 1 ? pr.cross : 0;
+        t = ttgAt(ttg, pr.s) + extra / gs * 3600;
+        rem = effRemaining(cfg, P, pr.s) + extra;
+      } else {
+        let d = pr.cross;
+        if (a.trk != null) {
+          const hit = rayHit(P, p, a.trk, minS, 40, D.sAb);
+          if (hit) { d = hit.d; sJoin = hit.s; }
+        }
+        t = d / gs * 3600 + ttgAt(ttg, sJoin);
+        rem = d + effRemaining(cfg, P, sJoin);
+      }
+      return { eta: now + t, etaIaf: null, remainingNm: rem, passedIaf: true, sNew: a.sMin || 0, tIafToThr: ttg[0],
+        tFinal: ttgAt(ttg, Math.max(0, P.length - cfg.profile.finalNm)), xfer: !onDw, viaDownwind: D.iaf };
     }
 
     /**
@@ -351,6 +433,23 @@
           if (byRoute) a.streamByRoute = true;
         }
 
+        // Bahn aus EuroScope: aendert der Lotse die Landebahn im Flugplan (z. B. 08R -> 08L),
+        // springt der Flieger auf die neue Bahn und wird dort nach ETA eingeplant.
+        // Nur Aenderungen zaehlen, nicht die Bahn, die EuroScope beim ersten Sehen eintraegt.
+        const esR = ac.arrRwy ? String(ac.arrRwy).toUpperCase() : null;
+        if (esR) {
+          if (a.esRwy && esR !== a.esRwy) {
+            const sES = sideOfRwy(esR);
+            if (sES && sES !== (a.rwySide || cfg.iafs[iaf].side)) {
+              a.rwySide = sES !== cfg.iafs[iaf].side ? sES : null;
+              a.locked = false; a.hold = false; a.esChanged = now;
+              st.hold = st.hold.filter(c => c !== ac.cs);
+              for (const s2 of SIDES) st.seq[s2] = st.seq[s2].filter(c => c !== ac.cs);
+            }
+          }
+          a.esRwy = esR;
+        }
+
         // Betriebsrichtung je Flieger: hinter dem IAF bleibt sie, wie sie war. Davor gilt bei einem
         // geplanten Runway Change die neue Richtung fuer alle, die nach dem Zeitpunkt landen
         // (ETA plus zuletzt geplantes Delay, mit 60 s Hysterese gegen Hin- und Herspringen).
@@ -375,9 +474,15 @@
           const r2 = computeEta(ac, a, p2, now, winds);
           if (!sideClosedLong(other, r2.eta)) { side = other; path = p2; r = r2; }
         }
+        // Hinter dem IAF auf der anderen Bahn: Rechnung ueber deren Downwind
+        if (r.passedIaf && side !== cfg.iafs[iaf].side) {
+          const rx = computeEtaX(ac, a, rwyId(side, acDir), now, winds);
+          if (rx) r = rx;
+        } else { a.xOn = false; a.xMin = 0; }
         a.side = side;
         a.dir = acDir;
-        if (r.passedIaf) { a.passedIaf = true; a.sMin = Math.max(a.sMin || 0, r.sNew - 0.5); }
+        if (r.passedIaf && r.viaDownwind) a.passedIaf = true;
+        else if (r.passedIaf) { a.passedIaf = true; a.sMin = Math.max(a.sMin || 0, r.sNew - 0.5); }
 
         // Landung erkannt
         const onGround = ac.alt != null && ac.alt < cfg.elevationFt + 60 && ac.gs < 70;
@@ -400,7 +505,8 @@
           cs: ac.cs, type: ac.type || '', wtc: ac.wtc || 'M', iaf, stream: a.stream, viaIaf: a.viaIaf, side,
           dir: acDir, rwy: rwyId(side, acDir), tFinal: r.tFinal, eta: r.eta, etaIaf: r.etaIaf, tIafToThr: r.tIafToThr,
           remainingNm: r.remainingNm, passedIaf: r.passedIaf, hold: !!a.hold,
-          locked: !!a.locked, manualRwy: !!a.rwySide, shortcut: !!r.shortcut
+          locked: !!a.locked, manualRwy: !!a.rwySide, shortcut: !!r.shortcut,
+          xfer: !!r.xfer, viaDownwind: r.viaDownwind || null, esRwy: a.esRwy || null
         });
       }
 
@@ -612,7 +718,7 @@
     function removeClosure(id) { st.closures = st.closures.filter(c => c.id !== id); }
     return {
       cfg, state: st, update, stats, moveTo, insertByEta, toHold, recompute, recomputeOne, unlock, setStatic,
-      addClosure, removeClosure, setDirChange, clearDirChange, paths, proj, timeTable: (path, vapp, winds) => timeTable(cfg, path, vapp, winds),
+      addClosure, removeClosure, setDirChange, clearDirChange, paths, dwPaths, proj, timeTable: (path, vapp, winds) => timeTable(cfg, path, vapp, winds),
       get last() { return last; },
       set: (k, v) => { st[k] = v; },
       exportState: () => JSON.parse(JSON.stringify(Object.assign({}, st, { ac: st.ac })))
@@ -649,5 +755,5 @@
     return own.id;
   }
 
-  return { createEngine, rayHit, streamByRoute, roleFor, ctrSector, parseMetarWind, makeProjection, headwind, tasFromIas, preparePaths, pointAt };
+  return { createEngine, downwindPaths, rayHit, streamByRoute, roleFor, ctrSector, parseMetarWind, makeProjection, headwind, tasFromIas, preparePaths, pointAt };
 });
