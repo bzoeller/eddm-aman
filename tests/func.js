@@ -115,7 +115,41 @@ const labelsIn = (p, side) => p.$$eval('.col.' + side + ' .label', l => l.map(x 
   await p.screenshot({ path: out + '/light.png' });
   ok(errs.length === 0, 'keine JS-Fehler ' + errs.join(' | '));
 
-  // 10) Telefon
+  // 10) Runway Change und Bahnsperre ueber den RWY-Kasten
+  await p.click('#btnMenu'); await p.selectOption('#selTheme', 'dark'); await p.selectOption('#simSpeed', '10'); await p.click('#btnClose');
+  await p.click('#btnRwy'); await p.waitForTimeout(200);
+  ok(await p.isVisible('#rwyDlg'), 'Klick auf RWY oeffnet den Dialog');
+  const simNow = await p.evaluate(() => document.querySelector('.clock').textContent);
+  const hm = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+  const fmt = m => String(Math.floor((m + 1440) % 1440 / 60)).padStart(2, '0') + ':' + String((m + 1440) % 60).padStart(2, '0');
+  // Vergangenheit wird abgelehnt
+  await p.fill('#chTime', fmt(hm(simNow) - 5)); await p.click('#btnChSet'); await p.waitForTimeout(100);
+  ok(/Vergangenheit/.test(await p.textContent('#rwyErr')), 'Zeit in der Vergangenheit abgelehnt: ' + (await p.textContent('#rwyErr')));
+  // Wechsel auf 08 in 3 Minuten (Simzeit)
+  const atStr = fmt(hm(simNow) + 3);
+  await p.click('#chDir button[data-dir="08"]');
+  await p.fill('#chTime', atStr); await p.click('#btnChSet'); await p.waitForTimeout(200);
+  ok((await p.textContent('#chPlanned')).includes('08 um ' + atStr), 'geplant angezeigt: ' + (await p.textContent('#chPlanned')));
+  // Bahnsperre Sued von +20 bis +35 min
+  await p.selectOption('#clSide', 'S');
+  await p.fill('#clFrom', fmt(hm(simNow) + 20)); await p.fill('#clTo', fmt(hm(simNow) + 35));
+  await p.click('#btnAddClosure'); await p.waitForTimeout(200);
+  ok((await p.textContent('#clList')).includes(fmt(hm(simNow) + 20) + ' bis ' + fmt(hm(simNow) + 35)), 'Sperre mit Uhrzeit: ' + (await p.textContent('#clList')));
+  await p.keyboard.press('Escape'); await p.waitForTimeout(150);
+  ok(!(await p.isVisible('#rwyDlg')), 'Escape schliesst den Dialog');
+  ok(!!(await p.$('.scale line.rwyc')) && /RWY 08/.test(await p.$eval('.scale svg', x => x.textContent)), 'gruen gestrichelte Linie mit RWY 08 am Zeitstrahl');
+  ok((await p.textContent('#rwyNext')).includes('08 ' + atStr), 'RWY-Kasten zeigt den geplanten Wechsel: ' + (await p.textContent('#rwyNext')));
+  ok(!!(await p.$('.col.S .cl rect')), 'Sperre Sued schraffiert');
+  const rw = await p.evaluate(() => [...document.querySelectorAll('.col.N .label')].length);
+  await p.screenshot({ path: out + '/rwychange.png' });
+  // automatischer Wechsel
+  let switched = false;
+  for (let i = 0; i < 12 && !switched; i++) { await p.waitForTimeout(3000); switched = (await p.textContent('#rwyVal')) === '08'; }
+  ok(switched, 'Richtung wechselt zum Zeitpunkt automatisch auf 08');
+  ok(!(await p.$('.scale line.rwyc')) && (await p.textContent('#rwyNext')) === '', 'Linie nach dem Wechsel weg');
+  ok(errs.length === 0, 'keine JS-Fehler ' + errs.join(' | '));
+
+  // 11) Telefon
   const q = await b.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   q.on('pageerror', e => errs.push(e.message));
   await q.goto(URL); await q.waitForTimeout(1500);

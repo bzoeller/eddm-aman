@@ -201,6 +201,7 @@
       finalGsMode: d.finalGsMode,
       timelineMin: d.timelineMin,
       closures: [],                // {id, side, from, to}
+      dirChange: null,             // geplanter Runway Change {id, to, at}
       ac: {},                      // pro Callsign: rwySide, hold, locked, captured, sMin, frozenSta, iaf
       seq: { N: [], S: [] },
       hold: [],
@@ -312,7 +313,10 @@
      */
     function update(traffic, now, winds) {
       winds = winds || {};
+      // geplanter Runway Change: Zeitpunkt erreicht -> Richtung wechselt automatisch
+      if (st.dirChange && now >= st.dirChange.at) { st.dir = st.dirChange.to; st.dirChange = null; }
       const dir = st.dir === 'auto' ? (traffic.activeDir || '26') : st.dir;
+      const ch = st.dirChange && st.dirChange.to !== dir ? st.dirChange : null;
       const seen = {};
       const items = [];
 
@@ -345,17 +349,32 @@
           if (byRoute) a.streamByRoute = true;
         }
 
-        // Bahnzuteilung: manuell > Standard nach IAF > Ausweichen bei Sperre
+        // Betriebsrichtung je Flieger: hinter dem IAF bleibt sie, wie sie war. Davor gilt bei einem
+        // geplanten Runway Change die neue Richtung fuer alle, die nach dem Zeitpunkt landen
+        // (ETA plus zuletzt geplantes Delay, mit 60 s Hysterese gegen Hin- und Herspringen).
         let side = a.rwySide || cfg.iafs[iaf].side;
-        let path = paths[iaf][rwyId(side, dir)];
+        let acDir = dir;
+        if (a.passedIaf && a.dir) acDir = a.dir;
+        else if (ch) {
+          const rOld = computeEta(ac, a, paths[iaf][rwyId(side, dir)], now, winds);
+          const tLand = rOld.eta + (a.lastDelay || 0);
+          if (a.chId !== ch.id) { a.chId = ch.id; a.chNew = tLand >= ch.at; }
+          else if (a.chNew && tLand < ch.at - 60) a.chNew = false;
+          else if (!a.chNew && tLand > ch.at + 60) a.chNew = true;
+          acDir = a.chNew ? ch.to : dir;
+          // im Update, in dem er den IAF passiert, gilt die bisher geplante Richtung weiter
+          if (rOld.passedIaf && a.dir) acDir = a.dir;
+        }
+        let path = paths[iaf][rwyId(side, acDir)];
         let r = computeEta(ac, a, path, now, winds);
         if (!a.rwySide && sideClosedLong(side, r.eta)) {
           const other = side === 'N' ? 'S' : 'N';
-          const p2 = paths[iaf][rwyId(other, dir)];
+          const p2 = paths[iaf][rwyId(other, acDir)];
           const r2 = computeEta(ac, a, p2, now, winds);
           if (!sideClosedLong(other, r2.eta)) { side = other; path = p2; r = r2; }
         }
         a.side = side;
+        a.dir = acDir;
         if (r.passedIaf) { a.passedIaf = true; a.sMin = Math.max(a.sMin || 0, r.sNew - 0.5); }
 
         // Landung erkannt
@@ -377,7 +396,7 @@
 
         items.push({
           cs: ac.cs, type: ac.type || '', wtc: ac.wtc || 'M', iaf, stream: a.stream, viaIaf: a.viaIaf, side,
-          rwy: rwyId(side, dir), eta: r.eta, etaIaf: r.etaIaf, tIafToThr: r.tIafToThr,
+          dir: acDir, rwy: rwyId(side, acDir), eta: r.eta, etaIaf: r.etaIaf, tIafToThr: r.tIafToThr,
           remainingNm: r.remainingNm, passedIaf: r.passedIaf, hold: !!a.hold,
           locked: !!a.locked, manualRwy: !!a.rwySide, shortcut: !!r.shortcut
         });
@@ -436,6 +455,11 @@
             }
           }
         }
+        // Runway Change: auf jeder Bahn zuerst alle Anfluege der alten Richtung, dann die neue
+        const tgtDir = ch ? ch.to : dir;
+        if (seq.some(cs => byCs[cs].dir !== tgtDir) && seq.some(cs => byCs[cs].dir === tgtDir)) {
+          seq = seq.filter(cs => byCs[cs].dir !== tgtDir).concat(seq.filter(cs => byCs[cs].dir === tgtDir));
+        }
         st.seq[side] = seq;
 
         // STA berechnen
@@ -445,7 +469,10 @@
           // reqSta = geplante Landezeit mit Staffelung (daraus das Delay, das noch aufzunehmen ist)
           let req = it.eta;
           if (st.staticMode && a.frozenSta && !it.passedIaf) req = Math.max(req, a.frozenSta);
-          if (prevItem) req = Math.max(req, prevItem.reqSta + sepSeconds(prevItem, it, side, dir, winds));
+          if (prevItem) req = Math.max(req, prevItem.reqSta + sepSeconds(prevItem, it, side, it.dir, winds));
+          // Runway Change: neue Richtung erst ab dem Zeitpunkt, dazu eine Luecke zum letzten Flieger der alten Richtung
+          if (ch && it.dir === ch.to) req = Math.max(req, ch.at);
+          if (prevItem && prevItem.dir !== it.dir) req = Math.max(req, Math.max(prevItem.reqSta, prevItem.sta) + (cfg.defaults.rwyChangeGapSec || 0));
           let guard2 = 0, c;
           while ((c = closedAt(side, req)) && guard2++ < 20) req = c.to;
           // Hinter dem IAF steht der Streifen auf der aktuellen Vorhersage: werden Zeit und Meilen
@@ -455,11 +482,12 @@
           let sta = req;
           if (it.passedIaf) {
             sta = it.eta;
-            if (prevItem) sta = Math.max(sta, prevItem.sta + minSepSeconds(prevItem, it, side, dir, winds));
+            if (prevItem) sta = Math.max(sta, prevItem.sta + minSepSeconds(prevItem, it, side, it.dir, winds));
           }
           it.sta = sta;
           it.reqSta = req;
           it.delay = req - it.eta;
+          a.lastDelay = it.delay;
           it.seqIndex = idx;
           it.gapToPrev = prevItem ? sta - prevItem.sta : null;
           if (it.etaIaf != null) {
@@ -476,7 +504,7 @@
       for (const i of items) if (i.hold) { i.sta = i.eta; i.delay = 0; }
 
       const bySide = { N: st.seq.N.map(cs => byCs[cs]), S: st.seq.S.map(cs => byCs[cs]) };
-      last = { list: items, bySide, byCs, now, dir, winds };
+      last = { list: items, bySide, byCs, now, dir, winds, dirChange: ch };
       return last;
     }
 
@@ -554,6 +582,12 @@
       st.staticMode = !!on;
       if (on) for (const i of last.list) if (st.ac[i.cs] && i.sta) st.ac[i.cs].frozenSta = i.sta;
     }
+    /** Runway Change planen (at in s) oder sofort (at <= jetzt). */
+    function setDirChange(to, at) {
+      if (at == null || at <= last.now) { st.dir = to; st.dirChange = null; return; }
+      st.dirChange = { id: Date.now() + Math.random(), to, at };
+    }
+    function clearDirChange() { st.dirChange = null; }
     function addClosure(side, from, to) {
       if (to <= from) return;
       st.closures.push({ id: Date.now() + Math.random(), side, from, to });
@@ -561,7 +595,7 @@
     function removeClosure(id) { st.closures = st.closures.filter(c => c.id !== id); }
     return {
       cfg, state: st, update, stats, moveTo, insertByEta, toHold, recompute, recomputeOne, unlock, setStatic,
-      addClosure, removeClosure, paths, proj, timeTable: (path, vapp, winds) => timeTable(cfg, path, vapp, winds),
+      addClosure, removeClosure, setDirChange, clearDirChange, paths, proj, timeTable: (path, vapp, winds) => timeTable(cfg, path, vapp, winds),
       get last() { return last; },
       set: (k, v) => { st[k] = v; },
       exportState: () => JSON.parse(JSON.stringify(Object.assign({}, st, { ac: st.ac })))

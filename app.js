@@ -23,7 +23,7 @@
     try {
       const st = engine.state;
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        settings, engine: { dir: st.dir, staticMode: st.staticMode, spacing: st.spacing, rate: st.rate, finalGsMode: st.finalGsMode, timelineMin: st.timelineMin, closures: st.closures }
+        settings, engine: { dir: st.dir, staticMode: st.staticMode, spacing: st.spacing, rate: st.rate, finalGsMode: st.finalGsMode, timelineMin: st.timelineMin, closures: st.closures, dirChange: st.dirChange }
       }));
     } catch (e) { /* ohne Speicher geht es auch */ }
   }
@@ -34,7 +34,7 @@
     const saved = load();
     if (saved && saved.settings) Object.assign(settings, saved.settings);
     if (!isPluginHost && settings.source === 'plugin') settings.source = 'sim';
-    engine = AmanCore.createEngine(cfg, saved && saved.engine ? Object.assign({}, saved.engine, { closures: (saved.engine.closures || []).filter(c => c.to > Date.now() / 1000) }) : null);
+    engine = AmanCore.createEngine(cfg, saved && saved.engine ? Object.assign({}, saved.engine, { closures: (saved.engine.closures || []).filter(c => c.to > Date.now() / 1000), dirChange: saved.engine.dirChange && saved.engine.dirChange.at > Date.now() / 1000 ? saved.engine.dirChange : null }) : null);
     applyTheme();
     const sel = $('selView');
     for (const v of cfg.ctrViews || []) { const o = document.createElement('option'); o.value = v.id; o.textContent = v.label; sel.appendChild(o); }
@@ -227,6 +227,15 @@
         s += '<text x="' + W / 2 + '" y="' + (y + (W < 60 ? 4 : 8)) + '" text-anchor="middle" fill="var(--tick)" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="' + (m === 0 ? (W < 60 ? 10 : 19) : (W < 60 ? 12 : 23)) + '">' + txt + '</text>';
       }
     }
+    // geplanter Runway Change: gruen gestrichelte Linie, darueber klein die neue Richtung
+    const chg = engine.last.dirChange;
+    if (chg) {
+      const y = g.y(chg.at);
+      if (y >= g.top - 2 && y <= g.y0) {
+        s += '<line class="rwyc" x1="0" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="var(--rwyc)" stroke-width="2.5" stroke-dasharray="7 5"/>';
+        s += '<text x="' + W / 2 + '" y="' + (y - 5) + '" text-anchor="middle" fill="var(--rwyc)" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="' + (W < 60 ? 10 : 12) + '">RWY ' + chg.to + '</text>';
+      }
+    }
     sc.svg.innerHTML = s;
     sc.clock.textContent = hhmm(now);
   }
@@ -245,11 +254,17 @@
       if (canEdit()) {
         const b = document.createElement('button');
         b.type = 'button'; b.className = 'closure-x'; b.textContent = 'SPERRE AUFHEBEN';
+        b.title = (c.side === 'N' ? 'Nord ' : 'Sued ') + hhmm(cl.from) + ' bis ' + hhmm(cl.to);
         b.style.top = (yTop + 34) + 'px';
         b.style[c.side === 'N' ? 'left' : 'right'] = '8px';
         b.addEventListener('click', () => { engine.removeClosure(cl.id); save(); tick(); });
         c.el.appendChild(b); c.closeBtns.push(b);
       }
+    }
+    const chg = engine.last.dirChange;
+    if (chg) {
+      const y = g.y(chg.at);
+      if (y >= g.top - 2 && y <= g.y0) s += '<line class="rwyc" x1="0" x2="' + g.W + '" y1="' + y + '" y2="' + y + '" stroke="var(--rwyc)" stroke-width="2" stroke-dasharray="7 5"/>';
     }
     grp.innerHTML = s;
   }
@@ -281,7 +296,7 @@
       const ideal = g.y(it._t);
       if (ideal < g.top) break;
       let cy = Math.min(ideal, prevTop - LH / 2 - GAP);
-      cy = Math.max(cy, g.top + LH / 2);
+      if (cy < g.top + LH / 2) break; // kein Platz mehr: Label liegt jenseits des Zeitstrahls
       const gapMin = prevT == null ? 99 : (it._t - prevT) / 60;
       const bent = gapMin < cfg.defaults.bentLineBelowMin || Math.abs(cy - ideal) > 1;
       prevTop = cy - LH / 2; prevT = it._t;
@@ -370,6 +385,8 @@
     }
     $('rwyVal').textContent = last.dir || '26';
     $('rwyAuto').textContent = st.dir === 'auto' ? 'AUTO' : 'MANUELL';
+    $('rwyNext').textContent = last.dirChange ? '\u2192' + last.dirChange.to + ' ' + hhmm(last.dirChange.at) : '';
+    if (!$('rwyDlg').hidden) syncRwyDlg(false);
     $('btnRwy').title = 'Betriebsrichtung ' + (st.dir === 'auto' ? 'automatisch' : 'manuell') + ' (Klick: AUTO, 26, 08)';
     $('btnRwy').disabled = !editable;
     $('len').value = st.timelineMin; $('lenVal').textContent = st.timelineMin;
@@ -538,12 +555,8 @@
 
   // ---------- Bedienung ----------
   function bindUi() {
-    $('btnRwy').addEventListener('click', () => {
-      const order = ['auto', '26', '08'];
-      engine.state.dir = order[(order.indexOf(engine.state.dir) + 1) % order.length];
-      for (const a of Object.values(engine.state.ac)) a.sMin = 0;
-      save(); tick();
-    });
+    $('btnRwy').addEventListener('click', openRwyDlg);
+    bindRwyDlg();
     $('len').addEventListener('input', e => { engine.state.timelineMin = +e.target.value; save(); tick(); });
     $('btnMenu').addEventListener('click', openSheet);
     $('btnClose').addEventListener('click', () => { $('sheet').hidden = true; });
@@ -568,14 +581,6 @@
     $('selGs').addEventListener('change', e => { engine.state.finalGsMode = e.target.value; save(); tick(); });
     $('rateN').addEventListener('change', e => { engine.state.rate.N = clampRate(e.target.value); save(); tick(); });
     $('rateS').addEventListener('change', e => { engine.state.rate.S = clampRate(e.target.value); save(); tick(); });
-    $('btnAddClosure').addEventListener('click', () => {
-      if (!canEdit()) return;
-      const from = nowSec() + 60 * Math.max(0, +$('clFrom').value || 0);
-      const to = nowSec() + 60 * Math.max(1, +$('clTo').value || 20);
-      const sides = $('clSide').value === 'B' ? ['N', 'S'] : [$('clSide').value];
-      sides.forEach(s => engine.addClosure(s, from, to));
-      save(); tick(); syncSheet();
-    });
     $('simRate').addEventListener('change', e => { settings.simRate = +e.target.value; if (simApi) simApi.sim.rate = settings.simRate; save(); });
     $('simSpeed').addEventListener('change', e => { settings.simSpeed = +e.target.value; save(); });
     $('simWind').addEventListener('change', e => {
@@ -601,18 +606,113 @@
     $('simRate').value = String(settings.simRate); $('simSpeed').value = String(settings.simSpeed); $('simWind').value = settings.simWind;
     $('simSection').hidden = settings.source !== 'sim';
     const ed = canEdit();
-    ['selGs', 'rateN', 'rateS', 'clSide', 'clFrom', 'clTo', 'btnAddClosure'].forEach(id => { $(id).disabled = !ed; });
-    const ul = $('clList'); ul.innerHTML = '';
+    ['selGs', 'rateN', 'rateS'].forEach(id => { $(id).disabled = !ed; });
+  }
+
+  // ---------- Dialog: Runway Change und Bahnsperre ----------
+  let chTarget = null;
+  const roundUp = (t, min) => Math.ceil(t / (min * 60)) * min * 60;
+  const toInput = t => { const d = new Date(t * 1000); return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()); };
+  /** HH:MM (UTC) als naechster Zeitpunkt im Fenster [ref - 12 h, ref + 12 h). */
+  function fromInput(v, ref) {
+    const m = /^\s*(\d{1,2}):?(\d{2})\s*$/.exec(v || '');
+    if (!m || +m[1] > 23 || +m[2] > 59) return null;
+    let t = Math.floor(ref / 86400) * 86400 + (+m[1]) * 3600 + (+m[2]) * 60;
+    while (t < ref - 43200) t += 86400;
+    while (t >= ref + 43200) t -= 86400;
+    return t;
+  }
+  function openRwyDlg() {
+    if (!canEdit()) return;
+    closeMenu();
+    const now = nowSec(), cur = engine.last.dir || '26';
+    const chg = engine.state.dirChange;
+    chTarget = chg ? chg.to : (cur === '26' ? '08' : '26');
+    $('chTime').value = toInput(chg ? chg.at : roundUp(now + 15 * 60, 5));
+    $('clFrom').value = toInput(roundUp(now + 10 * 60, 5));
+    $('clTo').value = toInput(roundUp(now + 30 * 60, 5));
+    document.querySelector('input[name=chWhen][value=at]').checked = true;
+    document.querySelector('input[name=clWhen][value=now]').checked = true;
+    $('rwyErr').textContent = '';
+    syncRwyDlg(true);
+    $('rwyDlg').hidden = false;
+    $('chDir').querySelector('[aria-pressed=true]').focus();
+  }
+  function closeRwyDlg() { $('rwyDlg').hidden = true; $('btnRwy').focus(); }
+  function syncRwyDlg(full) {
+    const cur = engine.last.dir || '26', chg = engine.state.dirChange;
+    for (const b of $('chDir').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.dir === chTarget));
+    $('btnDirAuto').hidden = !!simApi;
+    $('btnDirAuto').disabled = engine.state.dir === 'auto';
+    const pl = $('chPlanned');
+    const sig = chg ? chg.id + '|' + chg.at : 'none';
+    if (pl.dataset.sig !== sig) {
+      pl.dataset.sig = sig;
+      pl.innerHTML = '';
+      if (chg) {
+        const t = document.createElement('span'); t.textContent = 'Geplant: RWY ' + cur + ' \u2192 ' + chg.to + ' um ' + hhmm(chg.at);
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-small'; b.textContent = 'LOESCHEN';
+        b.addEventListener('click', () => { engine.clearDirChange(); save(); tick(); syncRwyDlg(true); });
+        pl.append(t, b);
+      }
+    }
+    // Bahnnamen in der aktuellen Richtung
+    const ids = s2 => cfg.runways[s2].ids[cur];
+    const o = $('clSide').options;
+    o[0].textContent = 'Nord ' + ids('N'); o[1].textContent = 'Sued ' + ids('S'); o[2].textContent = 'beide';
+    const ul = $('clList');
+    const csig = engine.state.closures.map(c => c.id + ':' + c.to).join(',') + cur;
+    if (!full && ul.dataset.sig === csig) return;
+    ul.dataset.sig = csig;
+    ul.innerHTML = '';
     for (const c of engine.state.closures) {
       if (c.to < nowSec()) continue;
       const li = document.createElement('li');
-      li.textContent = (c.side === 'N' ? 'Nord ' : 'Sued ') + hhmm(c.from) + ' bis ' + hhmm(c.to);
-      if (ed) {
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-small'; b.textContent = 'AUFHEBEN';
-        b.addEventListener('click', () => { engine.removeClosure(c.id); save(); tick(); syncSheet(); });
-        li.appendChild(b);
-      }
+      const t = document.createElement('span');
+      t.textContent = (c.side === 'N' ? 'Nord ' + ids('N') : 'Sued ' + ids('S')) + '  ' + hhmm(c.from) + ' bis ' + hhmm(c.to);
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-small'; b.textContent = 'AUFHEBEN';
+      b.addEventListener('click', () => { engine.removeClosure(c.id); save(); tick(); syncRwyDlg(true); });
+      li.append(t, b);
       ul.appendChild(li);
     }
+  }
+  function bindRwyDlg() {
+    const err = m => { $('rwyErr').textContent = m; };
+    $('rwyClose').addEventListener('click', closeRwyDlg);
+    $('rwyDlg').addEventListener('click', e => { if (e.target === $('rwyDlg')) closeRwyDlg(); });
+    $('rwyDlg').addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); closeRwyDlg(); } });
+    $('chDir').addEventListener('click', e => { const b = e.target.closest('button[data-dir]'); if (b) { chTarget = b.dataset.dir; syncRwyDlg(false); } });
+    $('chTime').addEventListener('input', () => { document.querySelector('input[name=chWhen][value=at]').checked = true; });
+    $('clFrom').addEventListener('input', () => { document.querySelector('input[name=clWhen][value=at]').checked = true; });
+    $('btnChSet').addEventListener('click', () => {
+      if (!canEdit()) return;
+      const now = nowSec(), cur = engine.last.dir || '26';
+      const when = document.querySelector('input[name=chWhen]:checked').value;
+      if (when === 'now') {
+        if (chTarget === cur && !engine.state.dirChange) { err('RWY ' + cur + ' ist bereits aktiv.'); return; }
+        engine.setDirChange(chTarget, null);
+      } else {
+        const at = fromInput($('chTime').value, now);
+        if (at == null) { err('Bitte die Uhrzeit als HH:MM (UTC) eingeben, z. B. 14:20.'); return; }
+        if (at <= now) { err(hhmm(at) + ' liegt in der Vergangenheit. Fuer sofort "ab jetzt" waehlen.'); return; }
+        if (chTarget === cur) { err('RWY ' + cur + ' ist bereits aktiv. Bitte die andere Richtung waehlen.'); return; }
+        engine.setDirChange(chTarget, at);
+      }
+      err(''); save(); tick(); syncRwyDlg(true);
+    });
+    $('btnDirAuto').addEventListener('click', () => { engine.state.dir = 'auto'; engine.clearDirChange(); save(); tick(); syncRwyDlg(true); });
+    $('btnAddClosure').addEventListener('click', () => {
+      if (!canEdit()) return;
+      const now = nowSec();
+      const from = document.querySelector('input[name=clWhen]:checked').value === 'now' ? now : fromInput($('clFrom').value, now);
+      if (from == null) { err('Bitte den Beginn als HH:MM (UTC) eingeben, z. B. 14:20.'); return; }
+      if (from < now - 60) { err('Beginn ' + hhmm(from) + ' liegt in der Vergangenheit. Fuer sofort "ab jetzt" waehlen.'); return; }
+      let to = fromInput($('clTo').value, from + 43200 - 60);
+      if (to == null) { err('Bitte das Ende als HH:MM (UTC) eingeben, z. B. 14:50.'); return; }
+      if (to <= from) { err('Das Ende muss nach dem Beginn liegen.'); return; }
+      const sides = $('clSide').value === 'B' ? ['N', 'S'] : [$('clSide').value];
+      sides.forEach(x => engine.addClosure(x, Math.max(from, now), to));
+      err(''); save(); tick(); syncRwyDlg(true);
+    });
   }
 })();

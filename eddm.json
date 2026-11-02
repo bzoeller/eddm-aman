@@ -50,9 +50,9 @@
    "color": "#2f6bff",
    "sector": "RDG",
    "streams": {
-    "LULAR": { "route": ["LULAR", "T105"], "sector": "RDG", "text": "fg" },
-    "NIRGO": { "route": ["NIRGO", "T108"], "sector": "RDG", "text": "fg" },
-    "VESUB": { "route": ["VESUB", "T106"], "sector": "RDG", "text": "fg" }
+    "LULAR": { "route": ["LULAR", "T105"], "sector": "RDG", "text": "fg", "fix": { "lat": 49.365861, "lon": 12.758953 } },
+    "NIRGO": { "route": ["NIRGO", "T108"], "sector": "RDG", "text": "fg", "fix": { "lat": 49.330944, "lon": 13.132219 } },
+    "VESUB": { "route": ["VESUB", "T106"], "sector": "RDG", "text": "fg", "fix": { "lat": 49.419258, "lon": 12.997417 } }
    }
   },
   "BETOS": {
@@ -62,8 +62,8 @@
    "color": "#e8d53a",
    "sector": "FUE/STA",
    "streams": {
-    "DISUN": { "route": ["DISUN", "T103"], "sector": "FUE", "text": "fg", "from": 220, "to": 360 },
-    "SOTOV": { "route": ["SOTOV", "T101"], "sector": "STA", "text": "box", "from": 90, "to": 220 }
+    "DISUN": { "route": ["DISUN", "T103"], "sector": "FUE", "text": "fg", "fix": { "lat": 47.862767, "lon": 11.105136 } },
+    "SOTOV": { "route": ["SOTOV", "T101"], "sector": "STA", "text": "box", "fix": { "lat": 46.943864, "lon": 11.210433 } }
    }
   },
   "NAPSA": {
@@ -1243,7 +1243,7 @@
   "finalGsMode": "typwind",
   "fixedFinalGs": 140,
   "bentLineBelowMin": 2,
-  "lostAfterSec": 60, "shortcutMinNm": 2, "refreshSec": 5, "minRadarSepNm": 2.5
+  "lostAfterSec": 60, "shortcutMinNm": 2, "refreshSec": 5, "minRadarSepNm": 2.5, "rwyChangeGapSec": 120
  },
  "roles": {
   "APP": "^EDDM_.*APP$",

@@ -18,8 +18,8 @@
   // je Eintrag: Peilung vom IAF und Route (wie im Flugplan); BETOS und NAPSA haben je zwei Stroeme
   const INBOUND = {
     ROKIL: [[300, 'ROKIL']],
-    LANDU: [[15, 'LULAR T105 LANDU'], [35, 'NIRGO T108 LANDU'], [60, 'VESUB T106 LANDU']],
-    BETOS: [[265, 'DISUN T103 BETOS'], [265, 'DISUN T103 BETOS'], [190, 'SOTOV T101 BETOS']],
+    LANDU: [[23, 'LULAR T105 LANDU'], [38, 'NIRGO T108 LANDU'], [30, 'VESUB T106 LANDU']],
+    BETOS: [[218, 'DISUN T103 BETOS'], [218, 'DISUN T103 BETOS'], [185, 'SOTOV T101 BETOS']],
     NAPSA: [[98, 'AMADI Q113 NAPSA'], [121, 'REDBU Q112 NAPSA']]
   };
   const WEIGHT = { ROKIL: 0.3, LANDU: 0.2, BETOS: 0.3, NAPSA: 0.2 };
@@ -57,7 +57,7 @@
       const t = TYPES[Math.floor(pickIndex(TYPES.map(x => x[2])))];
       const dirs = INBOUND[iaf];
       const inb = dirs[Math.floor(rnd() * dirs.length)];
-      const brg = (inb[0] + (rnd() - 0.5) * 20) * Math.PI / 180;
+      const brg = (inb[0] + (rnd() - 0.5) * 8) * Math.PI / 180;
       const d = distFromIaf != null ? distFromIaf : 150 + rnd() * 30;
       const I = proj.xy(cfg.iafs[iaf].lat, cfg.iafs[iaf].lon);
       const ac = {
@@ -122,7 +122,8 @@
           }
           ac.alt = altFor(ac, Math.max(0, d - move));
         } else if (ac.phase === 'path') {
-          const rwy = (info && info.rwy) || cfg.runways[cfg.iafs[ac.iaf].side].ids[sim.dir];
+          // ohne AMAN-Info (z. B. kurz vor dem Aufsetzen schon als gelandet gezaehlt) bleibt die Bahn
+          const rwy = (info && info.rwy) || ac.rwy || cfg.runways[cfg.iafs[ac.iaf].side].ids[sim.dir];
           const path = paths[ac.iaf][rwy];
           if (ac.rwy && ac.rwy !== rwy) ac.s = Math.min(ac.s, path.length - 1);
           ac.rwy = rwy;
@@ -154,7 +155,13 @@
             const dDirect = Math.hypot(T.x - here.x, T.y - here.y);
             // nur abkuerzen, wenn danach noch genug Abstand zum Vordermann bleibt (gut 2 min)
             const saved = ((sT - ac.s) * path.k - dDirect) / Math.max(150, gs) * 3600;
-            const room = !info || info.gapToPrev == null || info.gapToPrev - saved >= 130;
+            let room = true;
+            if (info) {
+              const seq = (last && last.bySide && last.bySide[info.side]) || [];
+              // nach der Abkuerzung gut 2 min Abstand zu jedem anderen Flieger auf der Bahn (geplante Zeiten)
+              const tNew = info.eta - saved;
+              room = info.delay < 20 && !seq.some(o => o && o !== info && Math.abs(Math.max(o.sta, o.reqSta || o.sta) - tNew) < 130);
+            }
             if (sT - ac.s > dDirect + 4 && room) {
               ac.didCut = true; ac.phase = 'direct'; ac.sT = sT; ac.path = path;
               continue;
