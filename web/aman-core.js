@@ -267,6 +267,7 @@
       seq: { N: [], S: [] },
       hold: [],
       landed: [],                  // {cs, side, t}
+      follow: { N: false, S: false }, // Reihenfolge kommt von einem anderen AMAN (nicht gespeichert)
       cnt: { N: 0, S: 0 }          // Landungen je Bahn seit dem Start
     };
   }
@@ -289,6 +290,49 @@
     if (Array.isArray(s.closures)) out.closures = s.closures.filter(c => c && (c.side === 'N' || c.side === 'S') && fin(c.from) && fin(c.to) && c.to > c.from);
     const ch = s.dirChange;
     if (ch && (ch.to === '26' || ch.to === '08') && fin(ch.at)) out.dirChange = { id: ch.id || ch.at, to: ch.to, at: ch.at };
+    return out;
+  }
+
+  /** Nur gueltige Callsigns (Fremddaten aus dem Abgleich). */
+  function csList(l) { return (Array.isArray(l) ? l : []).filter(c => typeof c === 'string' && /^[A-Z0-9_-]{2,12}$/.test(c)); }
+
+  /**
+   * Plan in einzelne Schluessel zerlegen, damit zwei Lotsen gleichzeitig an verschiedenen Teilen arbeiten
+   * koennen (z. B. N-APP an der Nordbahn, S-APP an der Suedbahn), ohne sich zu ueberschreiben:
+   * dir (mit Runway Change), static (mit eingefrorenen Zeiten), spacing.N/S, rate.N/S, seq.N/S, hold,
+   * cl:<id> je Bahnsperre, ac:<Callsign> je Flieger mit Hand-Eingriff.
+   */
+  function planToKeys(p) {
+    const k = {
+      dir: { dir: p.dir, dirChange: p.dirChange || null },
+      static: { on: !!p.staticMode, frozen: p.frozen || {} },
+      'spacing.N': p.spacing.N, 'spacing.S': p.spacing.S, 'rate.N': p.rate.N, 'rate.S': p.rate.S,
+      'seq.N': p.seq.N, 'seq.S': p.seq.S, hold: p.hold
+    };
+    for (const c of p.closures || []) k['cl:' + c.id] = c;
+    for (const cs of Object.keys(p.ac || {})) k['ac:' + cs] = p.ac[cs];
+    return k;
+  }
+  function keysToPlan(k) {
+    const g = (name, def) => (k[name] != null ? k[name] : def);
+    const p = {
+      v: 1, dir: g('dir', {}).dir, dirChange: g('dir', {}).dirChange || null,
+      staticMode: !!g('static', {}).on, frozen: g('static', {}).frozen || {},
+      spacing: { N: g('spacing.N'), S: g('spacing.S') }, rate: { N: g('rate.N'), S: g('rate.S') },
+      seq: { N: g('seq.N', []), S: g('seq.S', []) }, hold: g('hold', []), closures: [], ac: {}
+    };
+    for (const key of Object.keys(k)) {
+      if (k[key] == null) continue;
+      if (key.indexOf('cl:') === 0) p.closures.push(k[key]);
+      else if (key.indexOf('ac:') === 0) p.ac[key.slice(3)] = k[key];
+    }
+    return p;
+  }
+  /** Geaenderte Schluessel von a nach b (entfernte mit null). */
+  function diffKeys(a, b) {
+    const out = {};
+    for (const key of Object.keys(b)) if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) out[key] = b[key];
+    for (const key of Object.keys(a)) if (!(key in b) && a[key] != null) out[key] = null;
     return out;
   }
 
@@ -648,7 +692,8 @@
         // benachbarte Paare tauschen, wenn die ETA mehr als die Hysterese ueberholt
         // Ueberholen hinter dem IAF (Abkuerzung) gilt auch im static-Modus: wer real vorn ist, ist vorn.
         const H = cfg.defaults.hysteresisSec;
-        let changed = true, guard = 0;
+        // Folgt diese Bahn dem Plan eines anderen AMAN (Abgleich zwischen Lotsen), tauscht nur dieser
+        let changed = !st.follow[side], guard = 0;
         while (changed && guard++ < 200) {
           changed = false;
           for (let j = 0; j < seq.length - 1; j++) {
@@ -910,13 +955,15 @@
      * die rechnet jeder AMAN selbst aus seinen Daten.
      */
     function exportPlan() {
-      const ac = {};
+      const ac = {}, frozen = {};
       for (const cs of Object.keys(st.ac)) {
         const a = st.ac[cs];
         if (a.rwySide || a.locked || a.hold) ac[cs] = { rwySide: a.rwySide || null, locked: !!a.locked, hold: !!a.hold };
+        // static: die eingefrorenen Sollzeiten gehoeren zum Plan, damit alle dieselben Zeiten zeigen
+        if (st.staticMode && a.frozenSta) frozen[cs] = Math.round(a.frozenSta);
       }
       return JSON.parse(JSON.stringify({
-        v: 1, dir: st.dir, dirChange: st.dirChange, closures: st.closures, staticMode: st.staticMode,
+        v: 1, dir: st.dir, dirChange: st.dirChange, closures: st.closures, staticMode: st.staticMode, frozen,
         spacing: st.spacing, rate: st.rate, seq: st.seq, hold: st.hold, ac
       }));
     }
@@ -924,24 +971,27 @@
     function applyPlan(doc) {
       if (!doc || typeof doc !== 'object' || doc.v !== 1) return false;
       const ok = sanitizeState(cfg, doc);
-      const css = l => (Array.isArray(l) ? l : []).filter(c => typeof c === 'string' && /^[A-Z0-9_-]{2,12}$/.test(c));
       st.dir = ok.dir || st.dir;
       st.dirChange = doc.dirChange ? (ok.dirChange || null) : null;
       st.closures = ok.closures || [];
       if (ok.spacing) st.spacing = ok.spacing;
       if (ok.rate) st.rate = ok.rate;
-      st.seq = { N: css(doc.seq && doc.seq.N), S: css(doc.seq && doc.seq.S) };
-      st.hold = css(doc.hold);
+      st.seq = { N: csList(doc.seq && doc.seq.N), S: csList(doc.seq && doc.seq.S) };
+      st.hold = csList(doc.hold);
       const flags = doc.ac && typeof doc.ac === 'object' ? doc.ac : {};
       for (const cs of Object.keys(st.ac)) if (!flags[cs]) Object.assign(st.ac[cs], { rwySide: null, locked: false, hold: false });
-      for (const cs of css(Object.keys(flags))) {
+      for (const cs of csList(Object.keys(flags))) {
         const f = flags[cs] || {};
         // noch nicht gesehene Flieger: Eintrag anlegen, die Daten kommen mit dem naechsten Update
         const a = st.ac[cs] || (st.ac[cs] = { lastSeen: last.now || 0 });
         a.rwySide = f.rwySide === 'N' || f.rwySide === 'S' ? f.rwySide : null;
         a.locked = !!f.locked; a.hold = !!f.hold;
       }
-      if (st.staticMode !== !!doc.staticMode) setStatic(!!doc.staticMode);
+      st.staticMode = !!doc.staticMode;
+      // eingefrorene Zeiten aus dem Plan uebernehmen, nicht selbst neu einfrieren
+      const fr = doc.frozen && typeof doc.frozen === 'object' ? doc.frozen : {};
+      for (const cs of Object.keys(st.ac)) st.ac[cs].frozenSta = st.staticMode && typeof fr[cs] === 'number' && isFinite(fr[cs]) ? fr[cs] : null;
+      for (const cs of csList(Object.keys(fr))) if (st.staticMode && !st.ac[cs] && typeof fr[cs] === 'number' && isFinite(fr[cs])) st.ac[cs] = { lastSeen: last.now || 0, frozenSta: fr[cs] };
       return true;
     }
     return {
@@ -983,6 +1033,7 @@
 
   return {
     createEngine, sanitizeState, downwindPaths, streamByRoute, roleFor, ctrSector, parseMetarWind, makeProjection, preparePaths, pointAt,
+    planToKeys, keysToPlan, diffKeys,
     // gemeinsam mit der Simulation
     headwind, tasFromIas, trackDeg, angDiff, altAt, profileIas, vappFor, rayHit, rayHits, finalGeo, finalCross
   };

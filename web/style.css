@@ -141,6 +141,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 .len input { flex: 1; min-width: 0; accent-color: var(--bar-thumb); }
 
 .dirwarn { border: 3px solid var(--now); color: var(--now); background: var(--panel); padding: 6px 8px; font: 700 14px var(--font-ui); line-height: 1.35; }
+.syncnote { border: 2px solid var(--frame); background: var(--panel); padding: 4px 8px; font: 700 13px var(--font-ui); }
 .btn-undo { border: 3px solid var(--frame); background: var(--panel); font: 700 16px var(--font-ui); padding: 4px; cursor: pointer; }
 .btn-undo:disabled { color: var(--disabled); cursor: default; }
 .hold-title { font: 700 12px var(--font-ui); color: var(--muted); letter-spacing: .1em; margin-bottom: 4px; }
@@ -261,7 +262,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
   .flow span { font-size: 9px; padding-right: 4px; }
   .clock { font-size: 14px; height: 34px; }
   .side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding-left: 0; }
-  .btn-exit, .dirwarn, .quick { grid-column: 1 / -1; }
+  .btn-exit, .dirwarn, .syncnote, .quick { grid-column: 1 / -1; }
   .label .strokes i { width: 5px; }
   .holdbox { margin-top: 0; min-height: 120px; }
 }

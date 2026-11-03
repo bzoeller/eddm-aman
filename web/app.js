@@ -19,7 +19,10 @@
   let traffic = { aircraft: [] }, me = null, metar = null, aloft = null, lastData = 0, connErr = null, dataTime = null;
   let pollSeq = 0, pollTimer = null, aloftTimer = null;
   let curView = null, colEls = {}, drag = null, timer = null, lastTick = 0, online = null;
-  let sync = null, syncStatus = null, syncHello = null, pendingPublish = false;   // Abgleich zwischen Lotsen (V2)
+  // Abgleich zwischen Lotsen (V2): Verbindung, Status, zuletzt uebernommener Plan, laufender Eingriff
+  let sync = null, syncStatus = null, syncHello = null, syncView = null, syncNoteTimer = null;
+  let op = null;                                   // { what, before, marks } zwischen snapshot() und dem naechsten tick()
+  const lastAuto = { N: 0, S: 0 };
   const refreshMs = () => 1000 * cfg.defaults.refreshSec;
 
   // ---------- Speicher ----------
@@ -175,41 +178,125 @@
     const tr = simApi ? simApi.traffic() : traffic;
     engine.update(tr, nowSec(), currentWinds());
     engine.last.dataTime = dataTime;
-    if (pendingPublish) { pendingPublish = false; publishPlan(); }
+    if (op) finishOp();
+    else syncAuto();
     render();
   }
 
   // ---------- Abgleich zwischen Lotsen (V2) ----------
-  // Nur im Plugin-Betrieb und nur, wenn in eddm.json ein Sync-Server eingetragen ist.
+  // Nur im Plugin-Betrieb und nur, wenn in eddm.json ein Sync-Server eingetragen ist. Der Plan wird als einzelne
+  // Schluessel abgeglichen (AmanCore.planToKeys): jede Eingabe schickt nur, was sie geaendert hat.
+  const keysNow = () => AmanCore.planToKeys(engine.exportPlan());
+  const myCs = () => (me && me.callsign ? String(me.callsign).toUpperCase() : null);
+  /** Darf dieser AMAN den gemeinsamen Plan aendern? (dieselbe Regel wie auf dem Server) */
+  const isWriterCs = cs => !!cs && new RegExp(cfg.roles.APP).test(cs);
+  const isWriter = () => !simApi && isWriterCs(myCs());
+  const syncOnline = () => !!(sync && syncStatus && syncStatus.state === 'online' && sync.view());
+
+  /**
+   * Wer plant welche Bahn: N-APP die Nordbahn, S-APP die Suedbahn, ein APP ohne N/S (oder allein) beide.
+   * Nur der Besitzer einer Bahn verteilt deren automatische Reihenfolge, alle anderen folgen ihr.
+   */
+  function sideOwners() {
+    const list = [myCs()].concat(online || []).map(c => String(c || '').toUpperCase()).filter(isWriterCs);
+    const w = [...new Set(list)].sort();
+    const n = c => /_N_/.test(c), sth = c => /_S_/.test(c), gen = c => !n(c) && !sth(c);
+    return { N: w.find(n) || w.find(gen) || w.find(sth) || null, S: w.find(sth) || w.find(gen) || w.find(n) || null };
+  }
+
   function startSync() {
     if (sync || simApi || !cfg.sync || !cfg.sync.url) return;
     sync = AmanSync.connect({
       url: cfg.sync.url,
-      callsign: () => (me && me.callsign) || null,
+      callsign: myCs,
       onStatus: s => { syncStatus = s; renderLive(); },
-      onPlan: (doc, by) => {
-        if (!doc) {
+      onView: (keys, info) => {
+        if (!Object.keys(keys).length) {
           // noch kein gemeinsamer Plan: APP stellt seinen eigenen ein
-          if (canEdit()) publishPlan();
+          if (isWriter()) { sync.change(keysNow(), 'initial plan', [], false); syncView = JSON.stringify(sync.view()); }
           return;
         }
-        if (!engine.applyPlan(doc)) return;
-        undoStack.length = 0; syncUndo();
+        const json = JSON.stringify(keys);
+        if (json === syncView) return;      // nichts Neues (z. B. Bestaetigung der eigenen Eingabe): UNDO bleibt
+        syncView = json;
+        engine.applyPlan(AmanCore.keysToPlan(keys));
         $('holdList').dataset.sig = '';
-        curView = null;   // alle Labels neu aufbauen
+        curView = null;                     // Labels neu aufbauen
         save(); tick();
-      }
+      },
+      onNote: n => {
+        // Eingabe eines Kollegen: Flieger kurz markieren und am Rand nennen
+        (n.marks || []).forEach(mark);
+        const el = $('syncNote');
+        el.textContent = n.by + ': ' + (n.note || 'change');
+        el.hidden = false;
+        clearTimeout(syncNoteTimer); syncNoteTimer = setTimeout(() => { el.hidden = true; }, 8000);
+      },
+      onHistory: renderHistory
     });
   }
-  function publishPlan() {
-    if (sync && canEdit()) sync.publish(engine.exportPlan());
+
+  /** Eingriff abschliessen (im tick nach der Aenderung): UNDO-Eintrag und Aenderung an die anderen. */
+  function finishOp() {
+    const o = op; op = null;
+    const after = keysNow(), set = AmanCore.diffKeys(o.before, after);
+    if (!Object.keys(set).length) return;
+    const before = {};
+    for (const k of Object.keys(set)) before[k] = o.before[k] !== undefined ? o.before[k] : null;
+    undoStack.push({ what: o.what, before, after: set });
+    if (undoStack.length > 20) undoStack.shift();
+    syncUndo();
+    if (sync && isWriter()) { sync.change(set, o.what, o.marks, false); syncView = JSON.stringify(sync.view()); }
   }
+
+  /** Automatische Reihenfolge der eigenen Bahn(en) verteilen, hoechstens alle 5 s je Bahn. */
+  function syncAuto() {
+    const on = syncOnline();
+    const own = sideOwners(), me2 = myCs();
+    for (const side of ['N', 'S']) engine.state.follow[side] = on && own[side] !== me2;
+    if (!on || !isWriter()) return;
+    const v = sync.view();
+    for (const side of ['N', 'S']) {
+      if (own[side] !== me2 || Date.now() - lastAuto[side] < 5000) continue;
+      const local = engine.state.seq[side];
+      if (JSON.stringify(local) === JSON.stringify(v['seq.' + side] || [])) continue;
+      lastAuto[side] = Date.now();
+      sync.change({ ['seq.' + side]: local.slice() }, null, [], true);
+      syncView = JSON.stringify(sync.view());
+    }
+  }
+
   function syncLine() {
     if (!sync) return null;
     const s = syncStatus || sync.status();
-    if (s.state !== 'online') return { warn: true, text: 'SYNC offline: changes are not shared' };
+    if (s.alert) return { warn: true, text: 'SYNC: ' + s.alert };
+    if (s.state !== 'online') return { warn: true, text: 'SYNC offline' + (s.pending ? ': ' + s.pending + ' change(s) kept, sent when the connection is back' : ': working alone') };
     if (s.error) return { warn: true, text: 'SYNC: ' + s.error };
-    return { warn: false, text: 'SYNC online' + (s.by ? ', last change by ' + s.by : '') };
+    if (s.waiting && s.pending) return { warn: true, text: 'SYNC: ' + s.pending + ' change(s) not shared yet. ' + s.waiting };
+    const own = sideOwners();
+    return { warn: false, text: 'SYNC online, plan N ' + (own.N || '-') + ', S ' + (own.S || '-') + (s.by ? ', last change ' + s.by : '') };
+  }
+
+  // ---------- Verlauf des gemeinsamen Plans (wiederherstellen) ----------
+  function renderHistory(items) {
+    const ul = $('histList');
+    ul.innerHTML = '';
+    for (const h of items.slice(0, 15)) {
+      const li = document.createElement('li');
+      const t = document.createElement('span');
+      t.textContent = hhmm(h.at / 1000) + ' ' + (h.by || '') + ': ' + (h.note || 'change');
+      li.appendChild(t);
+      if (isWriter()) {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-small'; b.textContent = 'RESTORE';
+        b.addEventListener('click', () => {
+          if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'CONFIRM'; return; }
+          sync.restore(h.rev); $('histList').innerHTML = '';
+        });
+        li.appendChild(b);
+      }
+      ul.appendChild(li);
+    }
+    if (!items.length) ul.textContent = 'no changes yet';
   }
 
   // ---------- Ansicht und Rolle ----------
@@ -340,7 +427,7 @@
       flowInput.setAttribute('aria-label', 'Spacing ' + name + ' in NM');
       flowInput.addEventListener('change', () => {
         const v = Math.max(2.5, Math.min(20, parseFloat(flowInput.value) || cfg.defaults.spacingNm));
-        engine.state.spacing[side] = v; pendingPublish = true; save(); tick();
+        snapshot('FLOW ' + (side === 'N' ? 'North' : 'South') + ' ' + v + ' NM'); engine.state.spacing[side] = v; save(); tick();
       });
       flow.appendChild(flowInput);
       el.appendChild(flow);
@@ -611,6 +698,7 @@
     $('scope').classList.toggle('is-stale', stale);
     // Abgleich zwischen Lotsen gestoert: deutlich am Rand, Eingaben gelten dann nur lokal
     const sl = syncLine(), sw = $('syncWarn'), st = sl && sl.warn ? sl.text : '';
+    $('syncSection').hidden = !sync;
     if (sw.textContent !== st) sw.textContent = st;
     sw.hidden = !st;
     renderStatus();
@@ -786,19 +874,26 @@
     if (a && a.isConnected) a.focus({ preventScroll: true });
   }
   /** Zustand vor einem Eingriff merken (fuer UNDO). */
-  /** Zustand vor einem Eingriff merken (fuer UNDO); danach geht der neue Plan an die anderen AMANs. */
+  /** Eingriff beginnt: Zustand merken. Abgeschlossen wird er im naechsten tick() (finishOp). */
   function snapshot(what) {
-    undoStack.push({ what, plan: engine.exportPlan() });
-    if (undoStack.length > 20) undoStack.shift();
-    pendingPublish = true;
-    syncUndo();
+    if (op) finishOp();
+    op = { what, before: keysNow(), marks: [] };
   }
   function undo() {
     const u = undoStack.pop();
     if (!u || !canEdit()) { syncUndo(); return; }
-    engine.applyPlan(u.plan);
+    const cur = keysNow();
+    // hat inzwischen ein Kollege dieselben Eintraege geaendert, nicht ueberschreiben (die Reihenfolge aendert sich staendig von selbst)
+    const changed = Object.keys(u.after).filter(k => k.indexOf('seq.') !== 0 && JSON.stringify(cur[k] == null ? null : cur[k]) !== JSON.stringify(u.after[k]));
+    if (changed.length) {
+      if (syncStatus) { syncStatus.error = 'UNDO not possible: ' + u.what + ' was changed again in the meantime'; renderLive(); }
+      syncUndo(); return;
+    }
+    const merged = Object.assign({}, cur);
+    for (const k of Object.keys(u.before)) { if (u.before[k] === null) delete merged[k]; else merged[k] = u.before[k]; }
+    engine.applyPlan(AmanCore.keysToPlan(merged));
     $('holdList').dataset.sig = '';
-    pendingPublish = true;
+    if (sync && isWriter()) { sync.change(u.before, 'UNDO ' + u.what, [], false); syncView = JSON.stringify(sync.view()); }
     save(); syncUndo(); tick();
   }
   function syncUndo() {
@@ -806,7 +901,7 @@
     b.disabled = !u || !canEdit();
     b.title = u ? 'Undo: ' + u.what + ' (Ctrl+Z)' : 'Nothing to undo';
   }
-  const mark = cs => { flash[cs] = Date.now() + 5000; };
+  const mark = cs => { flash[cs] = Date.now() + 5000; if (op && op.marks.indexOf(cs) < 0) op.marks.push(cs); };
 
   function menuAction(act) {
     if (!menu) return;
@@ -827,6 +922,7 @@
 
   // ---------- Bedienung ----------
   function bindUi() {
+    $('btnHistory').addEventListener('click', () => { if (sync) sync.history(); });
     $('btnRwy').addEventListener('click', openRwyDlg);
     bindRwyDlg();
     $('len').addEventListener('input', e => { engine.state.timelineMin = +e.target.value; save(); tick(); });
@@ -857,8 +953,8 @@
     $('qView').addEventListener('change', e => { settings.view = e.target.value; $('selView').value = settings.view; save(); tick(); });
     $('qTheme').addEventListener('change', e => { settings.theme = e.target.value; $('selTheme').value = settings.theme; applyTheme(); save(); });
     $('selGs').addEventListener('change', e => { engine.state.finalGsMode = e.target.value; save(); tick(); });
-    $('rateN').addEventListener('change', e => { engine.state.rate.N = clampRate(e.target.value); pendingPublish = true; save(); tick(); });
-    $('rateS').addEventListener('change', e => { engine.state.rate.S = clampRate(e.target.value); pendingPublish = true; save(); tick(); });
+    $('rateN').addEventListener('change', e => { snapshot('rate North'); engine.state.rate.N = clampRate(e.target.value); save(); tick(); });
+    $('rateS').addEventListener('change', e => { snapshot('rate South'); engine.state.rate.S = clampRate(e.target.value); save(); tick(); });
     $('simRate').addEventListener('change', e => { settings.simRate = +e.target.value; if (simApi) simApi.sim.rate = settings.simRate; save(); });
     $('simSpeed').addEventListener('change', e => { settings.simSpeed = +e.target.value; save(); });
     $('simWind').addEventListener('change', e => {

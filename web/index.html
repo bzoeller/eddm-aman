@@ -33,6 +33,7 @@
 
     <div class="dirwarn" id="dirWarn" role="status" hidden></div>
     <div class="dirwarn" id="syncWarn" role="status" hidden></div>
+    <div class="syncnote" id="syncNote" role="status" hidden></div>
     <button class="btn-undo" id="btnUndo" type="button" disabled>UNDO</button>
 
     <div class="holdbox" id="holdBox" aria-label="Hold list">
@@ -154,6 +155,12 @@
         <label for="rateS">Landing rate South per h</label>
         <input type="number" id="rateS" min="10" max="60" step="1">
       </div>
+    </section>
+
+    <section id="syncSection" hidden>
+      <h3>Shared plan</h3>
+      <button class="btn-small" id="btnHistory" type="button">SHOW LAST CHANGES</button>
+      <ul class="cl-list" id="histList"></ul>
     </section>
 
     <section id="simSection">
