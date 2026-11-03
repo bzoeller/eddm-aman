@@ -20,7 +20,7 @@ jobs:
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: EuroScope-SDK aus den Secrets (gzip + Base64, in Stuecken, siehe tools/set-sdk-secrets.ps1)
         shell: pwsh
         env:
@@ -35,7 +35,7 @@ jobs:
             $in = New-Object IO.MemoryStream(,[Convert]::FromBase64String($b64))
             $gz = New-Object IO.Compression.GZipStream($in, [IO.Compression.CompressionMode]::Decompress)
             $fs = [IO.File]::Create($out); $gz.CopyTo($fs); $fs.Close(); $gz.Close()
-            Write-Host "$out: $((Get-Item $out).Length) Bytes"
+            Write-Host "${out}: $((Get-Item $out).Length) Bytes"
           }
           New-Item -ItemType Directory -Force plugin/sdk | Out-Null
           Unpack 'ES_SDK_H' 'plugin/sdk/EuroScopePlugIn.h'
