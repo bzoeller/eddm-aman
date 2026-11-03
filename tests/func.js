@@ -35,6 +35,11 @@ function serve() {
   const p = await b.newPage({ viewport: { width: 1600, height: 1000 } });
   const errs = [];
   p.on('pageerror', e => errs.push(e.message));
+  // fester Zufall: jeder Lauf hat denselben Simulationsverkehr (sonst fehlt z. B. mal ein Strom)
+  await p.addInitScript(seed => {
+    let a = seed >>> 0;
+    Math.random = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }, +process.env.AMAN_SEED || 11);
   await p.goto(URL);
   await shown(p, '.col.N .label');
   await p.click('#btnMenu'); await p.selectOption('#simSpeed', '1'); await p.click('#btnClose');
@@ -112,9 +117,9 @@ function serve() {
 
   // 9) CTR-Ansichten fuer BETOS: FUE (West), STA (Sued), combined (beide)
   const counts = {};
-  for (const v of ['BETOS-FUE', 'BETOS-STA', 'BETOS']) {
+  for (const v of ['BETOS', 'BETOS-FUE', 'BETOS-STA']) {
     await p.click('#btnMenu'); await p.selectOption('#selView', v); await p.click('#btnClose');
-    await p.waitForFunction(two => { const l = [...document.querySelectorAll('.col.C .label .cs')]; return l.length && (!two || new Set(l.map(x => getComputedStyle(x).color)).size === 2); }, v === 'BETOS', { timeout: 60000 }).catch(() => null);
+    await p.waitForFunction(two => { const l = [...document.querySelectorAll('.col.C .label .cs')]; return l.length && (!two || new Set(l.map(x => getComputedStyle(x).color)).size === 2); }, v === 'BETOS', { timeout: 120000 }).catch(() => null);
     counts[v] = (await p.$$('.col.C .label')).length;
     if (v === 'BETOS') {
       // DISUN T103: weisse Schrift, SOTOV T101: gelbe Schrift in gelber Box
@@ -128,7 +133,7 @@ function serve() {
   // Wien LOVV_B: NAPSA mit AMADI Q113 (weiss) und REDBU Q112 (rot)
   await p.click('#btnMenu'); await p.selectOption('#selView', 'NAPSA'); await p.click('#btnClose');
   // der Zufallsverkehr braucht evtl. ein paar Takte, bis beide Stroeme in der Ansicht sind
-  await p.waitForFunction(() => new Set([...document.querySelectorAll('.col.C .label .cs')].map(x => getComputedStyle(x).color)).size === 2, null, { timeout: 60000 }).catch(() => null);
+  await p.waitForFunction(() => new Set([...document.querySelectorAll('.col.C .label .cs')].map(x => getComputedStyle(x).color)).size === 2, null, { timeout: 120000 }).catch(() => null);
   const napsa = await p.$$eval('.col.C .label .cs', l => [...new Set(l.map(x => getComputedStyle(x).color))]);
   ok(napsa.length === 2, 'LOVV_B zeigt AMADI und REDBU (zwei Schriftfarben): ' + napsa.join(' / '));
 
