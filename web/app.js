@@ -19,6 +19,7 @@
   let traffic = { aircraft: [] }, me = null, metar = null, aloft = null, lastData = 0, connErr = null, dataTime = null;
   let pollSeq = 0, pollTimer = null, aloftTimer = null;
   let curView = null, colEls = {}, drag = null, timer = null, lastTick = 0, online = null;
+  let sync = null, syncStatus = null, syncHello = null, pendingPublish = false;   // Abgleich zwischen Lotsen (V2)
   const refreshMs = () => 1000 * cfg.defaults.refreshSec;
 
   // ---------- Speicher ----------
@@ -131,6 +132,9 @@
           save();
         }
       }
+      // Abgleich starten, sobald das eigene Callsign bekannt ist; bei einem neuen Login dem Server Bescheid geben
+      const cs = me && me.callsign;
+      if (cs) { startSync(); if (sync && syncHello !== cs) { syncHello = cs; sync.hello(); } }
       // veraltet zaehlt ab dem Zeitstempel der Daten: so faellt auch ein haengendes EuroScope auf
       lastData = tOk ? Math.min(Date.now(), d.time * 1000) : Date.now(); connErr = null;
       tick();
@@ -171,7 +175,41 @@
     const tr = simApi ? simApi.traffic() : traffic;
     engine.update(tr, nowSec(), currentWinds());
     engine.last.dataTime = dataTime;
+    if (pendingPublish) { pendingPublish = false; publishPlan(); }
     render();
+  }
+
+  // ---------- Abgleich zwischen Lotsen (V2) ----------
+  // Nur im Plugin-Betrieb und nur, wenn in eddm.json ein Sync-Server eingetragen ist.
+  function startSync() {
+    if (sync || simApi || !cfg.sync || !cfg.sync.url) return;
+    sync = AmanSync.connect({
+      url: cfg.sync.url,
+      callsign: () => (me && me.callsign) || null,
+      onStatus: s => { syncStatus = s; renderLive(); },
+      onPlan: (doc, by) => {
+        if (!doc) {
+          // noch kein gemeinsamer Plan: APP stellt seinen eigenen ein
+          if (canEdit()) publishPlan();
+          return;
+        }
+        if (!engine.applyPlan(doc)) return;
+        undoStack.length = 0; syncUndo();
+        $('holdList').dataset.sig = '';
+        curView = null;   // alle Labels neu aufbauen
+        save(); tick();
+      }
+    });
+  }
+  function publishPlan() {
+    if (sync && canEdit()) sync.publish(engine.exportPlan());
+  }
+  function syncLine() {
+    if (!sync) return null;
+    const s = syncStatus || sync.status();
+    if (s.state !== 'online') return { warn: true, text: 'SYNC offline: changes are not shared' };
+    if (s.error) return { warn: true, text: 'SYNC: ' + s.error };
+    return { warn: false, text: 'SYNC online' + (s.by ? ', last change by ' + s.by : '') };
   }
 
   // ---------- Ansicht und Rolle ----------
@@ -302,7 +340,7 @@
       flowInput.setAttribute('aria-label', 'Spacing ' + name + ' in NM');
       flowInput.addEventListener('change', () => {
         const v = Math.max(2.5, Math.min(20, parseFloat(flowInput.value) || cfg.defaults.spacingNm));
-        engine.state.spacing[side] = v; save(); tick();
+        engine.state.spacing[side] = v; pendingPublish = true; save(); tick();
       });
       flow.appendChild(flowInput);
       el.appendChild(flow);
@@ -571,6 +609,10 @@
     b.hidden = !stale;
     if (stale) b.textContent = 'DATA STALE ' + (isFinite(sec) ? Math.round(sec) + ' s' : '') + (connErr ? ' \u2013 ' + connErr : '');
     $('scope').classList.toggle('is-stale', stale);
+    // Abgleich zwischen Lotsen gestoert: deutlich am Rand, Eingaben gelten dann nur lokal
+    const sl = syncLine(), sw = $('syncWarn'), st = sl && sl.warn ? sl.text : '';
+    if (sw.textContent !== st) sw.textContent = st;
+    sw.hidden = !st;
     renderStatus();
   }
 
@@ -616,6 +658,8 @@
     lines.push('Wind surface ' + wf(w.surface) + ', FL100 ' + wf(w.aloft));
     lines.push('Final-GS ' + (engine.state.finalGsMode === 'fixed' ? 'fixed 140 kt' : 'type and wind'));
     lines.push(engine.last.list.length + ' aircraft tracked');
+    const sl = syncLine();
+    if (sl) lines.push(esc(sl.text));
     $('status').innerHTML = lines.join('<br>');
   }
   const pad3 = n => String(n).padStart(3, '0');
@@ -742,22 +786,19 @@
     if (a && a.isConnected) a.focus({ preventScroll: true });
   }
   /** Zustand vor einem Eingriff merken (fuer UNDO). */
+  /** Zustand vor einem Eingriff merken (fuer UNDO); danach geht der neue Plan an die anderen AMANs. */
   function snapshot(what) {
-    const st = engine.state, ac = {};
-    for (const cs of Object.keys(st.ac)) { const a = st.ac[cs]; ac[cs] = { rwySide: a.rwySide || null, locked: !!a.locked, hold: !!a.hold }; }
-    undoStack.push({ what, seq: { N: st.seq.N.slice(), S: st.seq.S.slice() }, hold: st.hold.slice(), ac,
-      closures: JSON.parse(JSON.stringify(st.closures)), dirChange: st.dirChange ? Object.assign({}, st.dirChange) : null, dir: st.dir, staticMode: st.staticMode });
+    undoStack.push({ what, plan: engine.exportPlan() });
     if (undoStack.length > 20) undoStack.shift();
+    pendingPublish = true;
     syncUndo();
   }
   function undo() {
     const u = undoStack.pop();
     if (!u || !canEdit()) { syncUndo(); return; }
-    const st = engine.state;
-    st.seq = u.seq; st.hold = u.hold; st.closures = u.closures; st.dirChange = u.dirChange; st.dir = u.dir;
-    if (st.staticMode !== u.staticMode) engine.setStatic(u.staticMode);
-    for (const cs of Object.keys(u.ac)) if (st.ac[cs]) Object.assign(st.ac[cs], u.ac[cs]);
+    engine.applyPlan(u.plan);
     $('holdList').dataset.sig = '';
+    pendingPublish = true;
     save(); syncUndo(); tick();
   }
   function syncUndo() {
@@ -816,8 +857,8 @@
     $('qView').addEventListener('change', e => { settings.view = e.target.value; $('selView').value = settings.view; save(); tick(); });
     $('qTheme').addEventListener('change', e => { settings.theme = e.target.value; $('selTheme').value = settings.theme; applyTheme(); save(); });
     $('selGs').addEventListener('change', e => { engine.state.finalGsMode = e.target.value; save(); tick(); });
-    $('rateN').addEventListener('change', e => { engine.state.rate.N = clampRate(e.target.value); save(); tick(); });
-    $('rateS').addEventListener('change', e => { engine.state.rate.S = clampRate(e.target.value); save(); tick(); });
+    $('rateN').addEventListener('change', e => { engine.state.rate.N = clampRate(e.target.value); pendingPublish = true; save(); tick(); });
+    $('rateS').addEventListener('change', e => { engine.state.rate.S = clampRate(e.target.value); pendingPublish = true; save(); tick(); });
     $('simRate').addEventListener('change', e => { settings.simRate = +e.target.value; if (simApi) simApi.sim.rate = settings.simRate; save(); });
     $('simSpeed').addEventListener('change', e => { settings.simSpeed = +e.target.value; save(); });
     $('simWind').addEventListener('change', e => {

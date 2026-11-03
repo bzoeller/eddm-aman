@@ -15,8 +15,9 @@ jobs:
       - name: Playwright und Chromium installieren
         run: |
           npm install
+          npm --prefix server ci
           npx playwright install --with-deps chromium
-      - name: Rechenkern und Browser
+      - name: Rechenkern, Sync-Server und Browser
         run: npm test
       - name: Plugin (mit Nachbau der EuroScope-Schnittstelle) und Plugin-Update
         run: npm run test:plugin

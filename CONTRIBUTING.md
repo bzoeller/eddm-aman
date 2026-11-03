@@ -10,6 +10,8 @@
 | `web/app.js` | Anzeige, Bedienung, Datenquellen |
 | `web/eddm.json` | Flughafendaten und Einstellungen, erklärt in [docs/config.md](docs/config.md) |
 | `plugin/` | EuroScope-Plugin (C++): liefert die Seite und `/api/traffic` auf 127.0.0.1:8471, Updater |
+| `web/aman-sync.js` | Abgleich zwischen Lotsen (Client) |
+| `server/` | Sync-Server für den Abgleich: Cloudflare Worker oder Docker, siehe [docs/sync.md](docs/sync.md) |
 | `installer/` | Inno-Setup-Skript |
 | `tests/` | Rechenkern-, Browser- und Plugin-Tests |
 
@@ -32,11 +34,12 @@ Dann `http://localhost:8090/` öffnen. Ohne Plugin läuft die Simulation.
 
 ```bash
 npm install
+npm --prefix server install
 npx playwright install chromium
 npm test
 ```
 
-`npm test` prüft den Rechenkern mit der Simulation (Landeabstände, Runway Change mit 15-NM-Regel, Bahnwechsel aus EuroScope, 7000-ft-Grenze, Heading direkt aufs Final) und die Seite im Browser; der Browsertest startet selbst einen Webserver. `npm run test:plugin` baut unter Linux das Plugin gegen den Test-Nachbau der EuroScope-Schnittstelle (`tests/plugin/es_stub/`) und prüft es mit dem AMAN im Browser sowie den Updater. Die GitHub-Actions laufen bei jedem Push.
+`npm test` prüft den Rechenkern mit der Simulation (Landeabstände, Runway Change mit 15-NM-Regel, Bahnwechsel aus EuroScope, 7000-ft-Grenze, Heading direkt aufs Final) , den Sync-Server (`tests/sync.js`) und die Seite im Browser; der Browsertest startet selbst einen Webserver. `npm run test:plugin` baut unter Linux das Plugin gegen den Test-Nachbau der EuroScope-Schnittstelle (`tests/plugin/es_stub/`) und prüft es mit dem AMAN im Browser sowie den Updater. Die GitHub-Actions laufen bei jedem Push.
 
 ## Plugin unter Windows bauen
 

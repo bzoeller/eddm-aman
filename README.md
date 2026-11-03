@@ -18,6 +18,7 @@ Meldet EuroScope „AMAN could not start: port 8471 is in use“, läuft schon e
 - Als APP: Klick auf ein Label öffnet **CHANGE RWY**, **HOLD**, **RECOMPUTE**. Label ziehen ändert die Reihenfolge. UNDO nimmt den letzten Eingriff zurück.
 - Klick auf den RWY-Kasten: Runway Change (sofort oder zu einer Uhrzeit) und Bahnsperre.
 - Unten rechts: Sektor von Hand wählen und DAY oder NIGHT.
+- Alle AMANs teilen sich einen Plan: Was APP ändert, sehen alle anderen nach 1 bis 2 Sekunden ([docs/sync.md](docs/sync.md)).
 
 Alles im Detail: [docs/bedienung.md](docs/bedienung.md).
 

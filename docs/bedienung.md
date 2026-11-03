@@ -18,6 +18,10 @@ Ohne EuroScope (zum Ausprobieren) läuft eine Simulation: Anflugverkehr über di
 - MENU: Einstellungen (Datenquelle, Ansicht, Darstellung hell oder dunkel, Staffelung, Simulation).
 - UNDO (oder Strg+Z): nimmt den letzten Eingriff zurück (Verschieben, HOLD, CHANGE RWY, RECOMPUTE, static/dynamic, Sperre, Runway Change).
 
+## Abgleich zwischen Lotsen
+
+Alle AMANs teilen sich einen Plan. Was APP ändert (Reihenfolge, HOLD, CHANGE RWY, RECOMPUTE, Sperren, Runway Change, static/dynamic, FLOW, UNDO), sehen alle anderen nach 1 bis 2 Sekunden. Ändern darf nur, wer als EDDM-APP im VATSIM-Netz online ist. Ist der Abgleich gestört, steht es rot am Rand, und die Eingaben gelten nur im eigenen AMAN. Details: [sync.md](sync.md).
+
 ## Runway Change und Bahnsperre
 
 Beides stellt APP über einen Klick auf den RWY-Kasten ein. Alle Zeiten sind UTC und werden als `HH:MM` oder vierstellig (`1420`) eingegeben.

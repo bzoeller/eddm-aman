@@ -94,6 +94,42 @@ let p;
   ok(inS.includes(s2) || !inN.includes(s2), s2 + ': EuroScope traegt 08L ein (Richtungswechsel), AMAN bleibt auf Sued');
   await p.screenshot({ path: out + '/plugin-rwychange.png' });
 
+  // V2: Abgleich zwischen Lotsen. Eigene Fenster mit eingetragenem Sync-Server:
+  // APP (EDDM_N_APP, laut Feed online) setzt einen Flieger auf HOLD, TWR sieht es ohne eigenes Zutun.
+  {
+    const withSync = async (pg, asCs) => {
+      await pg.route('**/eddm.json', async r => { const j = await (await r.fetch()).json(); j.sync.url = process.env.AMAN_SYNC_URL; r.fulfill({ json: j }); });
+      if (asCs) await pg.route('**/api/traffic', async r => { const j = await (await r.fetch()).json(); j.me = { callsign: asCs, facility: '4' }; r.fulfill({ json: j }); });
+      pg.on('pageerror', e => errs.push(e.message));
+      await pg.goto('http://127.0.0.1:8471/');
+    };
+    const pa = await b.newPage({ viewport: { width: 960, height: 1080 } }), pt = await b.newPage({ viewport: { width: 960, height: 1080 } });
+    await withSync(pa, null); await withSync(pt, 'EDDM_TWR');
+    const st = pg => pg.evaluate(() => document.getElementById('status').innerText);
+    const lastLine = s => s.split(String.fromCharCode(10)).pop();
+    ok(await until(async () => /SYNC online/.test(await st(pa)) && /SYNC online/.test(await st(pt)) && (await pa.$$('.col.S .label')).length > 3), 'beide Fenster mit dem Sync-Server verbunden');
+    const csH = (await pa.$$eval('.col.S .label', l => l.map(x => x.dataset.cs)))[2];
+    await pa.click('.col.S .label[data-cs="' + csH + '"]'); await pa.click('#acmenu button[data-act=hold]');
+    const inHold = pg => pg.$$eval('#holdList li', l => l.map(x => x.dataset.cs));
+    ok(await until(async () => (await inHold(pt)).includes(csH), 10000), 'APP setzt ' + csH + ' auf HOLD: TWR sieht es sofort im Hold-Feld');
+    ok(/last change by EDDM_N_APP/.test(await st(pt)), 'TWR sieht, wer zuletzt geaendert hat: ' + lastLine(await st(pt)));
+    await pa.click('#holdList li[data-cs="' + csH + '"]'); await pa.click('#acmenu button[data-act=recompute]');
+    ok(await until(async () => !(await inHold(pt)).includes(csH), 10000), 'RECOMPUTE bei APP holt ' + csH + ' auch bei TWR aus dem Hold');
+    // nach dem Neuladen holt sich ein Fenster den aktuellen Plan vom Server
+    await pa.click('.col.S .label[data-cs="' + csH + '"]'); await pa.click('#acmenu button[data-act=hold]');
+    await until(async () => (await inHold(pt)).includes(csH), 10000);
+    await pt.reload();
+    ok(await until(async () => (await inHold(pt)).includes(csH), 10000), 'TWR nach dem Neuladen: Plan vom Server uebernommen');
+    // nicht im VATSIM-Feed: Eingaben werden nicht verteilt, deutliche Meldung
+    const px = await b.newPage({ viewport: { width: 960, height: 1080 } });
+    await withSync(px, 'EDDM_S_APP');
+    await until(async () => /SYNC online/.test(await st(px)) && (await px.$$('.col.N .label')).length > 3);
+    await px.click('.col.N .label >> nth=3'); await px.click('#acmenu button[data-act=hold]');
+    ok(await until(async () => /not online on VATSIM/.test(await px.textContent('#syncWarn')) && await px.isVisible('#syncWarn')), 'APP nicht im VATSIM-Feed: Meldung am Rand: ' + (await px.textContent('#syncWarn')));
+    await pt.screenshot({ path: out + '/plugin-sync-twr.png' });
+    await pa.close(); await pt.close(); await px.close();
+  }
+
   // Plugin faellt aus -> DATA STALE
   process.kill(+harnessPid, 'SIGTERM');
   await until(() => p.isVisible('#stale'), 40000);

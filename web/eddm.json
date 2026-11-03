@@ -1252,6 +1252,10 @@
   "vectorMissNm": 3,
   "finalInterceptMinNm": 8
  },
+ "sync": {
+  "_info": "Abgleich zwischen den AMANs (V2): WebSocket-Adresse des Sync-Servers, null = aus",
+  "url": null
+ },
  "roles": {
   "APP": "^EDDM_.*APP$",
   "TWR": "^EDDM_(.*_)?TWR$",

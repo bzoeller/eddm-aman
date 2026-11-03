@@ -902,9 +902,51 @@
       st.closures.push({ id: Date.now() + Math.random(), side, from, to });
     }
     function removeClosure(id) { st.closures = st.closures.filter(c => c.id !== id); }
+
+    // ---------- Gemeinsamer Plan (UNDO und Abgleich zwischen Lotsen) ----------
+    /**
+     * Alle Eingriffe der Lotsen als kleines Dokument: Reihenfolge, Hold, Bahn und Sperre je Flieger,
+     * Bahnsperren, Runway Change, Richtung, static/dynamic, FLOW und Landerate. Die ETAs gehoeren nicht dazu,
+     * die rechnet jeder AMAN selbst aus seinen Daten.
+     */
+    function exportPlan() {
+      const ac = {};
+      for (const cs of Object.keys(st.ac)) {
+        const a = st.ac[cs];
+        if (a.rwySide || a.locked || a.hold) ac[cs] = { rwySide: a.rwySide || null, locked: !!a.locked, hold: !!a.hold };
+      }
+      return JSON.parse(JSON.stringify({
+        v: 1, dir: st.dir, dirChange: st.dirChange, closures: st.closures, staticMode: st.staticMode,
+        spacing: st.spacing, rate: st.rate, seq: st.seq, hold: st.hold, ac
+      }));
+    }
+    /** Plan uebernehmen (geprueft wie gespeicherter Zustand). Liefert false bei unbrauchbarem Dokument. */
+    function applyPlan(doc) {
+      if (!doc || typeof doc !== 'object' || doc.v !== 1) return false;
+      const ok = sanitizeState(cfg, doc);
+      const css = l => (Array.isArray(l) ? l : []).filter(c => typeof c === 'string' && /^[A-Z0-9_-]{2,12}$/.test(c));
+      st.dir = ok.dir || st.dir;
+      st.dirChange = doc.dirChange ? (ok.dirChange || null) : null;
+      st.closures = ok.closures || [];
+      if (ok.spacing) st.spacing = ok.spacing;
+      if (ok.rate) st.rate = ok.rate;
+      st.seq = { N: css(doc.seq && doc.seq.N), S: css(doc.seq && doc.seq.S) };
+      st.hold = css(doc.hold);
+      const flags = doc.ac && typeof doc.ac === 'object' ? doc.ac : {};
+      for (const cs of Object.keys(st.ac)) if (!flags[cs]) Object.assign(st.ac[cs], { rwySide: null, locked: false, hold: false });
+      for (const cs of css(Object.keys(flags))) {
+        const f = flags[cs] || {};
+        // noch nicht gesehene Flieger: Eintrag anlegen, die Daten kommen mit dem naechsten Update
+        const a = st.ac[cs] || (st.ac[cs] = { lastSeen: last.now || 0 });
+        a.rwySide = f.rwySide === 'N' || f.rwySide === 'S' ? f.rwySide : null;
+        a.locked = !!f.locked; a.hold = !!f.hold;
+      }
+      if (st.staticMode !== !!doc.staticMode) setStatic(!!doc.staticMode);
+      return true;
+    }
     return {
       cfg, state: st, update, stats, moveTo, insertByEta, toHold, recompute, recomputeOne, setStatic,
-      addClosure, removeClosure, setDirChange, clearDirChange, paths, dwPaths, proj,
+      addClosure, removeClosure, setDirChange, clearDirChange, exportPlan, applyPlan, paths, dwPaths, proj,
       get last() { return last; }
     };
   }

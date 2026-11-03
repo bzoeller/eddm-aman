@@ -1,0 +1,12 @@
+# Cloudflare Workers: Veroeffentlichen per GitHub-Action (.github/workflows/sync-deploy.yml) oder npx wrangler deploy
+name = "eddm-aman-sync"
+main = "worker.mjs"
+compatibility_date = "2025-06-01"
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

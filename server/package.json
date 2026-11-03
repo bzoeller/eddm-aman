@@ -1,0 +1,9 @@
+{
+  "name": "eddm-aman-sync",
+  "private": true,
+  "type": "module",
+  "description": "Sync server for the EDDM AMAN (Cloudflare Worker or Node/Docker)",
+  "license": "MIT",
+  "scripts": { "start": "node node.mjs" },
+  "dependencies": { "ws": "8.18.0" }
+}

@@ -1,0 +1,30 @@
+# Sync-Server (V2) auf Cloudflare Workers veroeffentlichen: bei jeder Aenderung in server/ oder von Hand.
+# Braucht die Repository-Secrets CLOUDFLARE_API_TOKEN und CLOUDFLARE_ACCOUNT_ID (siehe docs/sync.md).
+name: Sync-Server
+on:
+  push:
+    branches: [main]
+    paths: ['server/**', '.github/workflows/sync-deploy.yml']
+  workflow_dispatch:
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+  deploy:
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cloudflare-Zugang vorhanden?
+        id: cf
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "::notice::Kein CLOUDFLARE_API_TOKEN, Veroeffentlichen uebersprungen (siehe docs/sync.md)"; echo "ok=false" >> "$GITHUB_OUTPUT"; else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Auf Cloudflare veroeffentlichen
+        if: steps.cf.outputs.ok == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: server
+          command: deploy
