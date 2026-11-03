@@ -33,8 +33,8 @@ Dann `http://localhost:8090/` öffnen. Ohne Plugin läuft die Simulation.
 ## Tests
 
 ```bash
-npm install
-npm --prefix server install
+npm ci
+npm --prefix server ci
 npx playwright install chromium
 npm test
 ```
@@ -47,6 +47,4 @@ Siehe [plugin/README.md](plugin/README.md). Die EuroScope-SDK-Dateien kommen nie
 
 ## Neue Version veröffentlichen
 
-Einmalig: die SDK-Dateien mit `tools/set-sdk-secrets.ps1` als GitHub-Secrets ablegen (siehe `plugin/README.md`).
-
-Jede Version: Nummer in `VERSION` erhöhen, committen, Tag `v<Nummer>` pushen. GitHub führt zuerst alle Tests aus, baut dann unter Windows DLL und Installer, berechnet die Prüfsummen und veröffentlicht das Release. Danach holen sich alle Plugins die neue Version beim nächsten EuroScope-Start.
+Siehe [docs/release.md](docs/release.md): Updates sind signiert, der Build wartet auf die Freigabe des Betreuers.

@@ -1,5 +1,8 @@
-# Release: bei einem Tag v1.2.3 unter Windows bauen und als GitHub-Release veroeffentlichen.
-# Braucht die Repository-Secrets ES_SDK_H_1.. und ES_SDK_LIB_1.. (anlegen mit tools/set-sdk-secrets.ps1).
+# Release: unter Windows bauen, Update-Liste signieren und als GitHub-Release veroeffentlichen.
+# Start: Actions -> Release -> Run workflow (Tag v1.2.3) oder ein Tag v1.2.3 pushen.
+# Der Build-Job laeuft im Environment "release": er wartet auf die Freigabe des Betreuers und kommt erst dann
+# an den Signierschluessel UPDATE_SIGNING_KEY (eingerichtet mit tools/new-update-key.ps1, siehe docs/release.md).
+# Repository-Secrets: ES_SDK_H_1..4 und ES_SDK_LIB_1..4 (EuroScope-SDK, tools/set-sdk-secrets.ps1).
 name: Release
 on:
   push:
@@ -10,27 +13,44 @@ on:
         description: 'Tag, z. B. v1.0.0'
         required: true
 permissions:
-  contents: write
+  contents: read
 jobs:
   test:
     uses: ./.github/workflows/ci.yml
   build:
     needs: test
     runs-on: windows-2022
+    environment: release
+    permissions:
+      contents: write   # nur dieser Job darf das Release anlegen
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Update-Schluessel vorhanden?
+        shell: pwsh
+        run: |
+          if (-not (Test-Path tools/update-public-key.txt)) { throw "tools/update-public-key.txt fehlt (tools/new-update-key.ps1 ausfuehren, siehe docs/release.md)" }
       - name: EuroScope-SDK aus den Secrets (gzip + Base64, in Stuecken, siehe tools/set-sdk-secrets.ps1)
         shell: pwsh
         env:
-          # alle Secrets als ein JSON-Objekt, das Skript sucht sich die Stuecke ES_SDK_*_1.. heraus
-          ALL_SECRETS: ${{ toJSON(secrets) }}
+          ES_SDK_H_1: ${{ secrets.ES_SDK_H_1 }}
+          ES_SDK_H_2: ${{ secrets.ES_SDK_H_2 }}
+          ES_SDK_H_3: ${{ secrets.ES_SDK_H_3 }}
+          ES_SDK_H_4: ${{ secrets.ES_SDK_H_4 }}
+          ES_SDK_LIB_1: ${{ secrets.ES_SDK_LIB_1 }}
+          ES_SDK_LIB_2: ${{ secrets.ES_SDK_LIB_2 }}
+          ES_SDK_LIB_3: ${{ secrets.ES_SDK_LIB_3 }}
+          ES_SDK_LIB_4: ${{ secrets.ES_SDK_LIB_4 }}
         run: |
           function Unpack([string]$prefix, [string]$out) {
-            $all = $env:ALL_SECRETS | ConvertFrom-Json
             $b64 = ''
-            for ($i = 1; $i -le 99; $i++) { $v = $all."$($prefix)_$i"; if (-not $v) { break }; $b64 += $v.Trim() }
+            for ($i = 1; $i -le 4; $i++) { $v = [Environment]::GetEnvironmentVariable("$($prefix)_$i"); if (-not $v) { break }; $b64 += $v.Trim() }
             if (-not $b64) { throw "Secrets $($prefix)_1.. fehlen (tools/set-sdk-secrets.ps1 ausfuehren)" }
             $in = New-Object IO.MemoryStream(,[Convert]::FromBase64String($b64))
             $gz = New-Object IO.Compression.GZipStream($in, [IO.Compression.CompressionMode]::Decompress)
@@ -48,10 +68,13 @@ jobs:
           if ($v -ne $f) { throw "Tag $env:TAG passt nicht zu VERSION ($f)" }
           "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Bauen (32 Bit)
+        shell: pwsh
         run: |
-          cmake -S plugin -B build -A Win32 -DAMAN_VERSION=${{ env.VERSION }}
+          cmake -S plugin -B build -A Win32 -DAMAN_VERSION=$env:VERSION
+          if ($LASTEXITCODE -ne 0) { throw "CMake fehlgeschlagen" }
           cmake --build build --config Release
-      - name: Dateien, Pruefsummen und Installer
+          if ($LASTEXITCODE -ne 0) { throw "Build fehlgeschlagen" }
+      - name: Dateien und Pruefsummen
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist/web | Out-Null
@@ -62,6 +85,13 @@ jobs:
           $lines += "dll EDDM-AMAN.dll " + (Get-FileHash dist/EDDM-AMAN.dll -Algorithm SHA256).Hash.ToLower()
           foreach ($f in $web) { $lines += "web $f " + (Get-FileHash "dist/web/$f" -Algorithm SHA256).Hash.ToLower() }
           $lines -join "`n" | Out-File -Encoding ascii -NoNewline dist/manifest.txt
+      - name: Update-Liste signieren
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: node tools/sign-manifest.mjs dist/manifest.txt
+      - name: Installer
+        shell: pwsh
+        run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
           & $iscc "/DAppVersion=$env:VERSION" "/DDist=$PWD\dist" installer\EDDM-AMAN.iss
@@ -71,5 +101,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $files = @('dist/EDDM-AMAN-Setup.exe', 'dist/EDDM-AMAN.dll', 'dist/manifest.txt') + (Get-ChildItem dist/web -File | ForEach-Object { $_.FullName })
-          gh release create $env:TAG $files --title "EDDM AMAN $env:VERSION" --generate-notes
+          $files = @('dist/EDDM-AMAN-Setup.exe', 'dist/EDDM-AMAN.dll', 'dist/manifest.txt', 'dist/manifest.sig') + (Get-ChildItem dist/web -File | ForEach-Object { $_.FullName })
+          gh release create $env:TAG $files --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "EDDM AMAN $env:VERSION" --generate-notes

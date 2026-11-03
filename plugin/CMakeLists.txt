@@ -2,7 +2,7 @@
 #   cmake -S plugin -B build -A Win32 -DES_SDK_DIR=C:/pfad/zum/sdk
 #   cmake --build build --config Release
 cmake_minimum_required(VERSION 3.15)
-project(EDDM-AMAN CXX)
+project(EDDM-AMAN C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,11 +20,21 @@ file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" AMAN_VERSION_FILE)
 string(STRIP "${AMAN_VERSION_FILE}" AMAN_VERSION_FILE)
 set(AMAN_VERSION "${AMAN_VERSION_FILE}" CACHE STRING "Versionsnummer des Plugins")
 set(AMAN_UPDATE_BASE "https://github.com/bzoeller/eddm-aman/releases" CACHE STRING "Update-Quelle (GitHub-Releases)")
+# Oeffentlicher Schluessel fuer die Signatur der Updates (tools/update-public-key.txt). Ohne ihn baut man ein Plugin ohne Auto-Update.
+set(AMAN_UPDATE_PUBKEY "" CACHE STRING "Oeffentlicher Update-Schluessel (128 Hex-Zeichen)")
+if(AMAN_UPDATE_PUBKEY STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/update-public-key.txt")
+  file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../tools/update-public-key.txt" AMAN_UPDATE_PUBKEY)
+  string(STRIP "${AMAN_UPDATE_PUBKEY}" AMAN_UPDATE_PUBKEY)
+endif()
+if(NOT AMAN_UPDATE_PUBKEY MATCHES "^[0-9a-fA-F]+$" OR NOT AMAN_UPDATE_PUBKEY MATCHES "^.{128}$")
+  message(WARNING "Kein gueltiger Update-Schluessel: dieses Plugin installiert keine Updates.")
+  set(AMAN_UPDATE_PUBKEY "")
+endif()
 
-add_library(EDDM-AMAN SHARED src/AmanPlugin.cpp src/HttpServer.cpp src/PluginMain.cpp src/Updater.cpp)
+add_library(EDDM-AMAN SHARED src/AmanPlugin.cpp src/HttpServer.cpp src/PluginMain.cpp src/Updater.cpp src/Signature.cpp src/uecc_build.c)
 target_include_directories(EDDM-AMAN PRIVATE src "${ES_SDK_DIR}")
 target_link_libraries(EDDM-AMAN PRIVATE "${ES_SDK_DIR}/EuroScopePlugInDll.lib" ws2_32 shell32 winhttp)
-target_compile_definitions(EDDM-AMAN PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX AMAN_VERSION="${AMAN_VERSION}" AMAN_UPDATE_BASE="${AMAN_UPDATE_BASE}")
+target_compile_definitions(EDDM-AMAN PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX AMAN_VERSION="${AMAN_VERSION}" AMAN_UPDATE_BASE="${AMAN_UPDATE_BASE}" AMAN_UPDATE_PUBKEY="${AMAN_UPDATE_PUBKEY}")
 # Laufzeit statisch einbinden, damit kein zusaetzliches Visual-C++-Paket noetig ist
 set_property(TARGET EDDM-AMAN PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 

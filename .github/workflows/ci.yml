@@ -1,20 +1,24 @@
-# Tests bei jedem Push und Pull Request (Linux, ohne EuroScope-SDK); der Release-Workflow ruft sie auch auf
+# Tests bei jedem Push und Pull Request (Linux, ohne EuroScope-SDK); Release und Sync-Server rufen sie auch auf
 name: Tests
 on:
   push:
   pull_request:
   workflow_call:
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - name: Playwright und Chromium installieren
+      - name: Abhaengigkeiten (fest nach den Lockfiles) und Chromium
         run: |
-          npm install
+          npm ci
           npm --prefix server ci
           npx playwright install --with-deps chromium
       - name: Rechenkern, Sync-Server und Browser

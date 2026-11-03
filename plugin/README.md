@@ -39,7 +39,7 @@ Schritte:
    ```
 5. Ergebnis in `build\Release\`: `EDDM-AMAN.dll` und daneben der Ordner `web\` mit der AMAN-Seite. Beides gehört zusammen.
 
-Den fertigen Installer baut GitHub beim Release (siehe [CONTRIBUTING.md](../CONTRIBUTING.md)). Lotsen installieren über die Setup-Datei, siehe [README](../README.md).
+Ein selbst gebautes Plugin installiert keine Updates, außer `tools/update-public-key.txt` ist vorhanden (siehe [docs/release.md](../docs/release.md)). Den fertigen Installer baut GitHub beim Release (siehe [CONTRIBUTING.md](../CONTRIBUTING.md)). Lotsen installieren über die Setup-Datei, siehe [README](../README.md).
 
 ## Testen ohne EuroScope (Linux)
 

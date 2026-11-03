@@ -6,6 +6,7 @@
 //   version 1.2.0
 //   dll EDDM-AMAN.dll <sha256>
 //   web index.html <sha256>
+// manifest.sig: Signatur von manifest.txt (ECDSA P-256, siehe Signature.h). Ohne gueltige Signatur kein Update.
 #pragma once
 #include <functional>
 #include <string>
@@ -27,9 +28,10 @@ public:
     using Log = std::function<void(const std::string& msg)>;
     /**
      * pluginDir: Ordner der DLL (darin "web"), dllName: Dateiname der laufenden DLL,
-     * baseUrl: z. B. https://github.com/<owner>/<repo>/releases
+     * baseUrl: z. B. https://github.com/<owner>/<repo>/releases,
+     * publicKey: oeffentlicher Update-Schluessel (128 Hex-Zeichen); leer = Updates aus (z. B. eigener Build)
      */
-    Updater(std::string pluginDir, std::string dllName, std::string currentVersion, std::string baseUrl, Fetch fetch, Log log);
+    Updater(std::string pluginDir, std::string dllName, std::string currentVersion, std::string baseUrl, std::string publicKey, Fetch fetch, Log log);
     /** Einmal pruefen und ggf. einspielen. Liefert die neue Version oder "". Blockiert (eigener Thread!). */
     std::string checkAndApply();
     /** Reste eines frueheren Updates (*.old) entfernen. */
@@ -37,7 +39,7 @@ public:
 
 private:
     bool writeFile(const std::string& path, const std::string& data);
-    std::string dir_, dll_, current_, base_;
+    std::string dir_, dll_, current_, base_, pub_;
     Fetch fetch_;
     Log log_;
 };

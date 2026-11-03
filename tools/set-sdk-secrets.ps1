@@ -1,6 +1,6 @@
 # Legt die EuroScope-SDK-Dateien als GitHub-Secrets ab, damit GitHub die Releases bauen kann.
 # Die Dateien werden gepackt (gzip), als Base64 in Stuecke unter 48 KB geteilt (Grenze je Secret)
-# und als ES_SDK_H_1..12 und ES_SDK_LIB_1..12 gespeichert. Sie kommen nie ins Repo.
+# und als ES_SDK_H_1..4 und ES_SDK_LIB_1..4 gespeichert. Sie kommen nie ins Repo.
 #
 # Aufruf in der PowerShell im Repo-Ordner:
 #   powershell -ExecutionPolicy Bypass -File tools\set-sdk-secrets.ps1
@@ -31,7 +31,7 @@ function Pack([string]$path) {
   return [Convert]::ToBase64String($ms.ToArray())
 }
 
-$max = 12
+$max = 4      # so viele Stuecke liest der Release-Workflow
 $size = 30000   # unter der Grenze von 48 KB je Secret
 $files = @(
   @{ File = 'EuroScopePlugIn.h';      Name = 'ES_SDK_H' },

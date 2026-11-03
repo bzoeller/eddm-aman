@@ -7,6 +7,9 @@
 #ifndef AMAN_UPDATE_BASE
 #  define AMAN_UPDATE_BASE "https://github.com/bzoeller/eddm-aman/releases"
 #endif
+#ifndef AMAN_UPDATE_PUBKEY
+#  define AMAN_UPDATE_PUBKEY ""   // oeffentlicher Update-Schluessel (tools/update-public-key.txt), leer = keine Updates
+#endif
 
 #include <cctype>
 #include <cstdlib>
@@ -82,7 +85,7 @@ void CAmanPlugin::StartUpdateCheck(bool manual) {
 #endif
     updateThread_ = std::thread([this, manual, base] {
         auto fetch = [this](const std::string& url, std::string& body) { return !stopping_ && aman::httpGet(url, body); };
-        aman::Updater up(pluginDir_, dllName_, AMAN_VERSION, base, fetch, [this](const std::string& m) { if (!stopping_) QueueMessage("AMAN " + m); });
+        aman::Updater up(pluginDir_, dllName_, AMAN_VERSION, base, AMAN_UPDATE_PUBKEY, fetch, [this](const std::string& m) { if (!stopping_) QueueMessage("AMAN " + m); });
         up.cleanup();
         std::string v = up.checkAndApply();
         if (!v.empty()) { applied_ = v; QueueMessage("AMAN updated to " + v + ": AMAN page is new now (reload with F5), plugin after restarting EuroScope."); }

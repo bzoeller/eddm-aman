@@ -8,6 +8,7 @@
 #include <sstream>
 
 #include "Sha256.h"
+#include "Signature.h"
 
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
@@ -51,9 +52,9 @@ bool parseManifest(const std::string& text, Manifest& out) {
     return !out.version.empty() && !out.files.empty();
 }
 
-Updater::Updater(std::string pluginDir, std::string dllName, std::string currentVersion, std::string baseUrl, Fetch fetch, Log log)
+Updater::Updater(std::string pluginDir, std::string dllName, std::string currentVersion, std::string baseUrl, std::string publicKey, Fetch fetch, Log log)
     : dir_(std::move(pluginDir)), dll_(std::move(dllName)), current_(std::move(currentVersion)), base_(std::move(baseUrl)),
-      fetch_(std::move(fetch)), log_(std::move(log)) {}
+      pub_(std::move(publicKey)), fetch_(std::move(fetch)), log_(std::move(log)) {}
 
 void Updater::cleanup() {
     std::error_code ec;
@@ -68,8 +69,12 @@ bool Updater::writeFile(const std::string& path, const std::string& data) {
 }
 
 std::string Updater::checkAndApply() {
-    std::string text;
+    if (pub_.empty()) { log_("update check off (this build has no update key)"); return ""; }
+    std::string text, sig;
     if (!fetch_(base_ + "/latest/download/manifest.txt", text)) { log_("update check failed (no connection to GitHub)"); return ""; }
+    // erst die Signatur: nur Updates, die mit dem geheimen Release-Schluessel signiert sind
+    if (!fetch_(base_ + "/latest/download/manifest.sig", sig)) { log_("update rejected: signature missing"); return ""; }
+    if (!verifySignature(text, sig, pub_)) { log_("update rejected: signature invalid"); return ""; }
     Manifest m;
     if (!parseManifest(text, m)) { log_("update check failed (invalid manifest)"); return ""; }
     if (compareVersions(m.version, current_) <= 0) return "";
