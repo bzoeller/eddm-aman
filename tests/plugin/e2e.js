@@ -118,7 +118,7 @@ let p;
     const inHold = pg => pg.$$eval('#holdList li', l => l.map(x => x.dataset.cs));
     ok(await until(async () => (await inHold(pt)).includes(csH), 10000), 'APP setzt ' + csH + ' auf HOLD: TWR sieht es sofort im Hold-Feld');
     ok(await until(async () => (await pt.isVisible('#syncNote')) && (await pt.textContent('#syncNote')) === 'EDDM_N_APP: HOLD ' + csH), 'Hinweis bei TWR: ' + (await pt.textContent('#syncNote')));
-    ok(/last change EDDM_N_APP/.test(await st(pt)) && /plan N EDDM_N_APP, S EDDM_N_APP/.test(await st(pt)), 'Status bei TWR: ' + lastLine(await st(pt)));
+    ok(/last change EDDM_N_APP/.test(await st(pt)) && /auto order EDDM_N_APP/.test(await st(pt)), 'Status bei TWR: ' + lastLine(await st(pt)));
     await pa.click('#btnUndo');
     ok(await until(async () => !(await inHold(pt)).includes(csH), 10000), 'UNDO bei APP: ' + csH + ' auch bei TWR wieder aus dem Hold');
     // nach dem Neuladen holt sich ein Fenster den aktuellen Plan vom Server

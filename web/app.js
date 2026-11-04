@@ -194,15 +194,15 @@
   const syncOnline = () => !!(sync && syncStatus && syncStatus.state === 'online' && sync.view());
 
   /**
-   * Wer plant welche Bahn: N-APP die Nordbahn, S-APP die Suedbahn, ein APP ohne N/S (oder allein) beide.
-   * Nur der Besitzer einer Bahn verteilt deren automatische Reihenfolge, alle anderen folgen ihr.
+   * Aendern darf jeder APP alles. Die automatische Reihenfolge (Neue nach ETA, Tausch nach Ueberholen) verteilt aber
+   * nur einer, damit sie nicht zwischen zwei AMANs mit leicht anderen ETAs hin und her springt: der erste online APP
+   * nach Callsign. Alle anderen AMANs zeigen seine Reihenfolge.
    */
-  function sideOwners() {
+  function autoLead() {
     const list = [myCs()].concat(online || []).map(c => String(c || '').toUpperCase()).filter(isWriterCs);
-    const w = [...new Set(list)].sort();
-    const n = c => /_N_/.test(c), sth = c => /_S_/.test(c), gen = c => !n(c) && !sth(c);
-    return { N: w.find(n) || w.find(gen) || w.find(sth) || null, S: w.find(sth) || w.find(gen) || w.find(n) || null };
+    return [...new Set(list)].sort()[0] || null;
   }
+  const sideOwners = () => { const l = autoLead(); return { N: l, S: l }; };
 
   function startSync() {
     if (sync || simApi || !cfg.sync || !cfg.sync.url) return;
@@ -274,7 +274,7 @@
     if (s.error) return { warn: true, text: 'SYNC: ' + s.error };
     if (s.waiting && s.pending) return { warn: true, text: 'SYNC: ' + s.pending + ' change(s) not shared yet. ' + s.waiting };
     const own = sideOwners();
-    return { warn: false, text: 'SYNC online, plan N ' + (own.N || '-') + ', S ' + (own.S || '-') + (s.by ? ', last change ' + s.by : '') };
+    return { warn: false, text: 'SYNC online, auto order ' + (own.N || '-') + (s.by ? ', last change ' + s.by : '') };
   }
 
   // ---------- Verlauf des gemeinsamen Plans (wiederherstellen) ----------

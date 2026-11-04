@@ -10,12 +10,12 @@ Mit V2 teilen sich alle AMANs einen gemeinsamen Plan. Jede Eingabe von APP ersch
 
 ## APP plant, alle anderen folgen
 
-- **Reihenfolge:** Die Nordbahn plant N-APP (`EDDM_N_APP`), die Südbahn S-APP (`EDDM_S_APP`). Ist nur ein APP online oder hat das Callsign kein N/S, plant er beide.
-  - Der AMAN des planenden APP verteilt auch die automatische Reihenfolge, etwa neue Flieger nach ETA oder einen Tausch nach dem Überholen, höchstens alle 5 Sekunden.
-  - Alle anderen AMANs sortieren diese Bahn nicht selbst um. Sie zeigen die Reihenfolge von APP.
+- **Ändern:** Jeder APP darf alles ändern, auf beiden Bahnen.
+- **Automatische Reihenfolge** (neue Flieger nach ETA, Tausch nach dem Überholen): Die verteilt genau ein AMAN, sonst würde sie zwischen zwei APPs mit leicht anderen ETAs hin und her springen. Das ist der erste online APP nach Callsign (z. B. EDDM_F_APP vor EDDM_N_APP), höchstens alle 5 Sekunden.
+  - Alle anderen AMANs, auch die der anderen APPs, sortieren nicht selbst um. Sie zeigen diese Reihenfolge, bis jemand von Hand eingreift.
 - **static:** Die eingefrorenen Zeiten kommen von APP, so passen die Delay-Balken der CTR genau zu dem, was APP verlangt.
 - **ETA:** Rechnet jeder AMAN selbst aus seinen EuroScope-Daten. Die können sich um einige Sekunden unterscheiden, die Reihenfolge und die Sollzeiten sind trotzdem für alle gleich.
-- **Im Status (MENU):** steht, wer gerade welche Bahn plant: „SYNC online, plan N EDDM_N_APP, S EDDM_S_APP, last change …“.
+- **Im Status (MENU):** steht, wessen AMAN die automatische Reihenfolge verteilt: „SYNC online, auto order EDDM_F_APP, last change …“.
 
 ## Wer darf ändern
 
