@@ -72,7 +72,8 @@ jobs:
       - name: Bauen (32 Bit)
         shell: pwsh
         run: |
-          cmake -S plugin -B build -A Win32 -DAMAN_VERSION=$env:VERSION -DAMAN_REQUIRE_UPDATE_KEY=ON
+          # in Anfuehrungszeichen: sonst setzt PowerShell bei Argumenten mit "-" vorne die Variable nicht ein
+          cmake -S plugin -B build -A Win32 "-DAMAN_VERSION=$env:VERSION" -DAMAN_REQUIRE_UPDATE_KEY=ON
           if ($LASTEXITCODE -ne 0) { throw "CMake fehlgeschlagen" }
           cmake --build build --config Release
           if ($LASTEXITCODE -ne 0) { throw "Build fehlgeschlagen" }
@@ -80,7 +81,10 @@ jobs:
           $key = (Get-Content tools/update-public-key.txt -Raw).Trim().ToLower()
           $dll = [IO.File]::ReadAllText("$PWD/build/Release/EDDM-AMAN.dll", [Text.Encoding]::GetEncoding(28591))
           if (-not $dll.Contains($key)) { throw "Update-Schluessel fehlt in der DLL" }
-          Write-Host "Update-Schluessel ist in der DLL." 
+          Write-Host "Update-Schluessel ist in der DLL."
+          # Sicherung: die Versionsnummer muss in der DLL stehen, sonst haelt sich das Plugin fuer veraltet
+          if (-not $dll.Contains("$env:VERSION" + [char]0) -or $dll.Contains('$env:')) { throw "Versionsnummer $env:VERSION fehlt in der DLL" }
+          Write-Host "Version $env:VERSION ist in der DLL." 
       - name: Dateien und Pruefsummen
         shell: pwsh
         run: |
