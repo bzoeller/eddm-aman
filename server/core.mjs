@@ -20,6 +20,7 @@ export const CONFIG = {
   history: 20,                                // so viele Staende lassen sich wiederherstellen
   rate: { burst: 20, perSec: 2 },             // Nachrichten je Verbindung
   maxConnPerIp: 8,
+  maxTraffic: 150,                            // so viele Flieger je Verkehrs-Nachricht eines Lotsen
   readonly: false                             // Notschalter: niemand darf aendern
 };
 
@@ -58,15 +59,20 @@ export function createRoom(deps, config = CONFIG) {
   const writerRe = new RegExp(config.writerPattern);
   let feedCache = null, chain = Promise.resolve();
 
-  async function online() {
+  /** Aus dem VATSIM-Feed (hoechstens alle 30 s): schreibende APPs, alle Lotsen, alle Piloten-Callsigns. */
+  async function feedInfo() {
     const t = deps.now();
     if (!feedCache && deps.loadFeed) feedCache = await deps.loadFeed();
-    if (!feedCache || t - feedCache.at > config.feedCacheMs) {
-      feedCache = { at: t, list: onlineControllers(await deps.feed()).filter(cs => writerRe.test(cs)) };
+    if (!feedCache || !feedCache.ctl || t - feedCache.at > config.feedCacheMs) {
+      const f = await deps.feed();
+      const ctl = onlineControllers(f);
+      const pilots = (f && Array.isArray(f.pilots) ? f.pilots : []).map(x => String((x && x.callsign) || '').toUpperCase()).filter(Boolean);
+      feedCache = { at: t, list: ctl.filter(cs => writerRe.test(cs)), ctl, pilots };
       if (deps.storeFeed) await deps.storeFeed(feedCache);
     }
-    return feedCache.list;
+    return feedCache;
   }
+  async function online() { return (await feedInfo()).list; }
   async function room() {
     const r = await deps.load();
     const empty = { rev: r ? r.rev : 0, at: 0, by: null, keys: {}, hist: r ? r.hist || [] : [], ids: [] };
@@ -117,6 +123,18 @@ export function createRoom(deps, config = CONFIG) {
       const out = { reply: stateMsg(await room()) };
       if (doubled(conn.cs, peers)) out.broadcast = { t: 'alert', text: dupText(conn.cs) };
       return out;
+    }
+    if (m.t === 'traffic') {
+      // Verkehr eines Lotsen fuer die anderen (z. B. CTR mit grosser Reichweite). Nur von eingeloggten Lotsen,
+      // und nur Flieger, die laut VATSIM-Feed wirklich als Pilot verbunden sind (keine erfundenen Flieger).
+      if (!conn.cs || !Array.isArray(m.aircraft)) return {};
+      let fi;
+      try { fi = await feedInfo(); } catch (e) { return {}; }
+      if (fi.ctl.indexOf(conn.cs) < 0) return { reply: { t: 'denied', code: 'traffic', reason: conn.cs + ' is not online on VATSIM yet: traffic not shared' } };
+      const pilots = new Set(fi.pilots);
+      const aircraft = m.aircraft.slice(0, config.maxTraffic).filter(a => a && typeof a === 'object' && typeof a.cs === 'string' && pilots.has(a.cs.toUpperCase())
+        && typeof a.lat === 'number' && typeof a.lon === 'number' && isFinite(a.lat) && isFinite(a.lon));
+      return { broadcast: { t: 'traffic', by: conn.cs, at: deps.now() / 1000, aircraft }, except: conn };
     }
     if (m.t === 'history') {
       const r = await room();

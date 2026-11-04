@@ -29,7 +29,7 @@ let p;
   const b = await chromium.launch();
   p = await b.newPage({ viewport: { width: 960, height: 1080 } });
   // nie mit dem echten Sync-Server verbinden: der Test meldet sich als EDDM_N_APP
-  await p.route('**/eddm.json', async r => { const j = await (await r.fetch()).json(); j.sync.url = null; r.fulfill({ json: j }); });
+  await p.route('**/eddm.json', async r => { const j = await (await r.fetch()).json(); j.sync.url = null; j.sync.feed = false; r.fulfill({ json: j }); });
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto('http://127.0.0.1:8471/');
   await until(async () => /View APP/.test(await p.evaluate(() => document.getElementById('status').innerText)) && (await p.$$('.col.S .label')).length > 3);
@@ -99,9 +99,15 @@ let p;
   // V2: Abgleich zwischen Lotsen. Eigene Fenster mit eingetragenem Sync-Server:
   // APP (EDDM_N_APP, laut Feed online) plant, TWR sieht denselben Plan ohne eigenes Zutun.
   {
-    const withSync = async (pg, asCs) => {
+    // nachgebildeter VATSIM-Feed fuer die Seiten: ein Flieger weit draussen (ausserhalb jeder EuroScope-Reichweite)
+    const feedFix = { general: { update_timestamp: new Date().toISOString() }, controllers: [], pilots: [
+      { callsign: 'FEED123', latitude: 48.35, longitude: 8.9, altitude: 35000, groundspeed: 460, heading: 90,
+        flight_plan: { arrival: 'EDDM', aircraft: 'A320/M-SDE2', aircraft_short: 'A320', route: 'DCT ROKIL2A' } }] };
+    const withSync = async (pg, asCs, keep) => {
+      await pg.route('**/vatsim-data.json', r => r.fulfill({ json: Object.assign({}, feedFix, { general: { update_timestamp: new Date().toISOString() } }) }));
+      if (keep) await pg.route('**/api/traffic', async r => { const j = await (await r.fetch()).json(); j.me = { callsign: asCs, facility: '4' }; j.aircraft = j.aircraft.slice(0, keep); r.fulfill({ json: j }); });
       await pg.route('**/eddm.json', async r => { const j = await (await r.fetch()).json(); j.sync.url = process.env.AMAN_SYNC_URL; r.fulfill({ json: j }); });
-      if (asCs) await pg.route('**/api/traffic', async r => { const j = await (await r.fetch()).json(); j.me = { callsign: asCs, facility: '4' }; r.fulfill({ json: j }); });
+      if (asCs && !keep) await pg.route('**/api/traffic', async r => { const j = await (await r.fetch()).json(); j.me = { callsign: asCs, facility: '4' }; r.fulfill({ json: j }); });
       pg.on('pageerror', e => errs.push(e.message));
       await pg.goto('http://127.0.0.1:8471/');
     };
@@ -142,6 +148,19 @@ let p;
     await withSync(pd, null);
     ok(await until(async () => /connected twice/.test(await pa.textContent('#syncWarn'))), 'gleiches APP-Callsign zweimal verbunden: Warnung');
     await pd.close();
+    // Verkehr ausserhalb der eigenen Reichweite: TWR sieht in EuroScope nur 5 Flieger, bekommt den Rest von APP
+    // (laut Feed als Lotse online) und den weit entfernten FEED123 aus dem VATSIM-Feed
+    const api = await (await fetch('http://127.0.0.1:8471/api/traffic')).json();
+    fs.writeFileSync(process.env.AMAN_FEED_FILE, JSON.stringify({ controllers: [{ callsign: 'EDDM_N_APP', facility: 5 }],
+      pilots: api.aircraft.map(a => ({ callsign: a.cs })) }));
+    const pr = await page();
+    await withSync(pr, 'EDDM_TWR', 5);
+    const counts = async () => { const m = /(\d+) aircraft tracked \((\d+) from other controllers, (\d+) from VATSIM\)/.exec(await st(pr)); return m ? m.slice(1).map(Number) : [0, 0, 0]; };
+    ok(await until(async () => { const c = await counts(); return c[1] >= 10 && c[2] === 1; }, 40000), 'TWR mit kurzer Reichweite: Flieger von APP und aus dem VATSIM-Feed (' + (await counts()).join(' / ') + ')');
+    // Zeitstrahl auf 90 min, bei dichtem Testverkehr liegt der weit entfernte Flieger mit Delay sonst dahinter
+    await pr.$eval('#len', el => { el.value = 90; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
+    ok(await until(async () => !!(await pr.$('.label[data-cs="FEED123"]')), 15000), 'FEED123 aus dem VATSIM-Feed steht als Label am Zeitstrahl');
+    await pr.close();
     await pt.screenshot({ path: out + '/plugin-sync-twr.png' });
     await pa.close(); await pt.close();
   }

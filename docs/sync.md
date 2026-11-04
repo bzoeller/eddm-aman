@@ -17,6 +17,17 @@ Mit V2 teilen sich alle AMANs einen gemeinsamen Plan. Jede Eingabe von APP ersch
 - **ETA:** Rechnet jeder AMAN selbst aus seinen EuroScope-Daten. Die können sich um einige Sekunden unterscheiden, die Reihenfolge und die Sollzeiten sind trotzdem für alle gleich.
 - **Im Status (MENU):** steht, wessen AMAN die automatische Reihenfolge verteilt: „SYNC online, auto order EDDM_F_APP, last change …“.
 
+## Flieger außerhalb der eigenen Reichweite
+
+Jeder AMAN sieht von sich aus nur, was sein EuroScope in der eingestellten Reichweite empfängt. Bei APP tauchen die Flieger deshalb spät auf, bei CTR viel früher. Darum ergänzt jeder AMAN sein Bild:
+
+- **Von anderen Lotsen:** Jeder eingeloggte Lotse (APP, TWR, CTR) gibt seine EuroScope-Flieger alle 10 Sekunden über den Sync-Server an die anderen weiter. So sieht APP die Flieger, sobald ein CTR sie sieht, samt Tracking und Route.
+- **Aus dem VATSIM-Datenfeed:** Jeder AMAN holt alle 30 Sekunden selbst die Anflüge nach EDDM im Umkreis von 250 NM. Das klappt auch, wenn gerade kein CTR online ist.
+- **Vorrang:** zuerst die eigenen EuroScope-Daten, dann die frischesten Daten eines anderen Lotsen, dann der Feed. Ältere Positionen (Feed etwa 15 bis 30 s) werden mit Kurs und Geschwindigkeit hochgerechnet. Kommt der Flieger in die eigene Reichweite, gelten wieder die eigenen, genauen Daten.
+- **Schutz:** Verkehr verteilen kann nur, wer laut VATSIM-Feed als Lotse online ist. Der Server nimmt nur Flieger an, die laut Feed wirklich als Pilot verbunden sind, also keine erfundenen.
+- **Im Status (MENU):** „62 aircraft tracked (40 from other controllers, 3 from VATSIM)“.
+- Ein- und ausschalten in `web/eddm.json` unter `sync`: `shareTraffic`, `feed`, `feedRangeNm`.
+
 ## Wer darf ändern
 
 Nur APP (`^EDDM_.*APP$`, dieselbe Regel wie `roles.APP` in `web/eddm.json`). Der Server prüft bei jeder Änderung im öffentlichen VATSIM-Datenfeed, ob dieses Callsign gerade wirklich als Lotse online ist.

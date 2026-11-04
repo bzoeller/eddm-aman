@@ -9,10 +9,12 @@
  *
  * Protokoll (JSON):
  *   Client -> Server: { t: 'hello', cs }  { t: 'patch', id, base, set, note, marks, auto }  { t: 'history' }
+ *                     { t: 'traffic', aircraft }   (eigener Verkehr fuer die anderen, nur eingeloggte Lotsen)
  *                     { t: 'restore', id, rev }  { t: 'ping' }
  *   Server -> Client: { t: 'state', rev, keys, by, at }  { t: 'patch', rev, id, by, set, note, marks, auto }
  *                     { t: 'ack', id, rev }  { t: 'conflict', id, by, keys, auto, state }
  *                     { t: 'denied', id, code, reason }  { t: 'history', items }  { t: 'alert', text }  { t: 'pong' }
+ *                     { t: 'traffic', by, at, aircraft }   (Verkehr eines anderen Lotsen)
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -94,6 +96,11 @@
           if (m.state) mirror = { rev: m.state.rev, keys: m.state.keys || {} };
           if (!m.auto) status.error = 'Change by ' + (m.by || 'another controller') + ' arrived first: your change was not applied, please redo it';
           report(); emit({ conflict: true, by: m.by });
+        } else if (m.t === 'traffic') {
+          // Verkehr eines anderen Lotsen (Flieger ausserhalb der eigenen Reichweite)
+          if (opts.onTraffic && Array.isArray(m.aircraft)) opts.onTraffic({ by: m.by || null, at: m.at, aircraft: m.aircraft });
+        } else if (m.t === 'denied' && m.code === 'traffic') {
+          status.trafficNote = String(m.reason || '').slice(0, 200); report();   // nur Hinweis, Plan-Warteschlange bleibt
         } else if (m.t === 'denied') {
           if (m.code === 'offline') {
             // noch nicht im VATSIM-Feed: Warteschlange behalten und spaeter erneut senden
@@ -136,6 +143,8 @@
       /** Serverseitiger Stand (ohne eigene Warteschlange). */
       serverKeys: () => (mirror ? Object.assign({}, mirror.keys) : null),
       history() { send({ t: 'history' }); },
+      /** Eigenen Verkehr (EuroScope) an die anderen Lotsen schicken. */
+      traffic(aircraft) { if (mirror) { status.trafficNote = null; send({ t: 'traffic', aircraft }); } },
       restore(rev) { send({ t: 'restore', id: randomId(), rev }); },
       /** Login hat sich geaendert (z. B. von CTR auf APP). */
       hello() { status.alert = null; send({ t: 'hello', cs: opts.callsign() || null }); },

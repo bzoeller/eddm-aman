@@ -23,6 +23,9 @@
   let sync = null, syncStatus = null, syncHello = null, syncView = null, syncNoteTimer = null;
   let op = null;                                   // { what, before, marks } zwischen snapshot() und dem naechsten tick()
   const lastAuto = { N: 0, S: 0 };
+  // Verkehr ausserhalb der eigenen Reichweite: von anderen Lotsen und aus dem VATSIM-Datenfeed
+  let localAircraft = [], feedTraffic = null, feedErr = null, trafficCounts = null, feedTimer = null, shareTimer = null;
+  const remoteUploads = {};   // Callsign des Lotsen -> { by, at, aircraft }
   const refreshMs = () => 1000 * cfg.defaults.refreshSec;
 
   // ---------- Speicher ----------
@@ -89,7 +92,9 @@
       timer = setInterval(tickSim, 250);
     } else {
       simApi = null;
-      clearTimeout(pollTimer); clearInterval(aloftTimer);
+      clearTimeout(pollTimer); clearInterval(aloftTimer); clearInterval(feedTimer); clearInterval(shareTimer);
+      if (cfg.sync && cfg.sync.feed) { fetchFeed(); feedTimer = setInterval(fetchFeed, 30000); }
+      shareTimer = setInterval(shareTraffic, 10000);
       pollPlugin();
       timer = setInterval(() => tick(true), 1000); // Uhr und Hinweis auf veraltete Daten laufen weiter
       fetchAloft();
@@ -122,7 +127,8 @@
       metar = typeof d.metar === 'string' ? d.metar : null;
       online = Array.isArray(d.controllers) ? d.controllers.map(c => (c && c.callsign) || c).filter(c => typeof c === 'string') : null;
       const rw = Array.isArray(d.arrRwys) ? d.arrRwys.map(String) : [];
-      traffic = { aircraft: Array.isArray(d.aircraft) ? d.aircraft : [], activeDir: rw.some(r => /^08/.test(r)) ? '08' : (rw.some(r => /^26/.test(r)) ? '26' : null) };
+      localAircraft = Array.isArray(d.aircraft) ? d.aircraft : [];
+      traffic = { aircraft: localAircraft, activeDir: rw.some(r => /^08/.test(r)) ? '08' : (rw.some(r => /^26/.test(r)) ? '26' : null) };
       const tOk = typeof d.time === 'number' && isFinite(d.time);
       dataTime = tOk ? d.time : Date.now() / 1000;
       // Beim ersten Laden einmalig die Betriebsrichtung aus EuroScope uebernehmen, danach nie wieder
@@ -140,6 +146,7 @@
       if (cs) { startSync(); if (sync && syncHello !== cs) { syncHello = cs; sync.hello(); } }
       // veraltet zaehlt ab dem Zeitstempel der Daten: so faellt auch ein haengendes EuroScope auf
       lastData = tOk ? Math.min(Date.now(), d.time * 1000) : Date.now(); connErr = null;
+      mergeTraffic();
       tick();
     }).catch(e => {
       if (my !== pollSeq) return;
@@ -232,7 +239,8 @@
         el.hidden = false;
         clearTimeout(syncNoteTimer); syncNoteTimer = setTimeout(() => { el.hidden = true; }, 8000);
       },
-      onHistory: renderHistory
+      onHistory: renderHistory,
+      onTraffic: t => { if (t.by && t.by !== myCs()) remoteUploads[t.by] = t; }
     });
   }
 
@@ -275,6 +283,30 @@
     if (s.waiting && s.pending) return { warn: true, text: 'SYNC: ' + s.pending + ' change(s) not shared yet. ' + s.waiting };
     const own = sideOwners();
     return { warn: false, text: 'SYNC online, auto order ' + (own.N || '-') + (s.by ? ', last change ' + s.by : '') };
+  }
+
+  // ---------- Verkehr ausserhalb der eigenen Reichweite ----------
+  /** Eigene EuroScope-Flieger plus Flieger von anderen Lotsen und aus dem VATSIM-Feed (eigene Daten haben Vorrang). */
+  function mergeTraffic() {
+    const now = dataTime || Date.now() / 1000;
+    for (const k of Object.keys(remoteUploads)) if (now - remoteUploads[k].at > 120) delete remoteUploads[k];
+    const m = AmanTraffic.merge(localAircraft, Object.values(remoteUploads), feedTraffic, now);
+    traffic.aircraft = m.aircraft;
+    trafficCounts = m.counts;
+  }
+  /** VATSIM-Datenfeed: alle Anfluege nach EDDM im Umkreis (alle 30 s). */
+  function fetchFeed() {
+    if (simApi) return;
+    fetch(AmanTraffic.FEED_URL, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(j => {
+      feedTraffic = AmanTraffic.feedArrivals(j, 'EDDM', cfg.wind.lat, cfg.wind.lon, cfg.sync.feedRangeNm || 250);
+      feedErr = null;
+    }).catch(e => { feedErr = (e && e.message) || 'error'; });
+  }
+  /** Eigenen Verkehr an die anderen Lotsen geben (alle 10 s), damit z. B. APP die Flieger aus der CTR-Reichweite sieht. */
+  function shareTraffic() {
+    if (!sync || !cfg.sync.shareTraffic || !syncOnline() || !localAircraft.length) return;
+    const r = AmanCore.roleFor(cfg, myCs());
+    if (r === 'APP' || r === 'TWR' || r === 'CTR') sync.traffic(AmanTraffic.forUpload(localAircraft));
   }
 
   // ---------- Verlauf des gemeinsamen Plans (wiederherstellen) ----------
@@ -745,7 +777,9 @@
     lines.push('View ' + viewKey() + (canEdit() ? ', control enabled' : ', display only'));
     lines.push('Wind surface ' + wf(w.surface) + ', FL100 ' + wf(w.aloft));
     lines.push('Final-GS ' + (engine.state.finalGsMode === 'fixed' ? 'fixed 140 kt' : 'type and wind'));
-    lines.push(engine.last.list.length + ' aircraft tracked');
+    const tc = trafficCounts;
+    lines.push(engine.last.list.length + ' aircraft tracked' + (tc && (tc.upload || tc.feed) ? ' (' + tc.upload + ' from other controllers, ' + tc.feed + ' from VATSIM)' : ''));
+    if (!simApi && cfg.sync && cfg.sync.feed && feedErr) lines.push('VATSIM data: ' + esc(feedErr));
     const sl = syncLine();
     if (sl) lines.push(esc(sl.text));
     $('status').innerHTML = lines.join('<br>');

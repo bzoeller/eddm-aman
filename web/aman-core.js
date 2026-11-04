@@ -599,7 +599,8 @@
       // IAF: vom Plugin, sonst aus dem STAR-Namen (z. B. BETOS1A) oder der Route, sonst der naechste
       let iafIn = ac.iaf && cfg.iafs[ac.iaf] ? ac.iaf : null;
       if (!iafIn && typeof ac.star === 'string') iafIn = Object.keys(cfg.iafs).find(k => ac.star.toUpperCase().indexOf(k) === 0) || null;
-      if (!iafIn && typeof ac.route === 'string') { const tk = ac.route.toUpperCase().split(/[\s.\/]+/); iafIn = Object.keys(cfg.iafs).find(k => tk.indexOf(k) >= 0) || null; }
+      // Route: der IAF selbst oder eine STAR wie ROKIL2A (so steht es oft im VATSIM-Flugplan)
+      if (!iafIn && typeof ac.route === 'string') { const tk = ac.route.toUpperCase().split(/[\s.\/]+/); iafIn = Object.keys(cfg.iafs).find(k => tk.some(t => t === k || (t.indexOf(k) === 0 && /^\d[A-Z]$/.test(t.slice(k.length))))) || null; }
       const iaf = iafIn || a.iaf || nearestIaf(p);
       a.iaf = iaf;
       // Einflugstrom (z. B. DISUN T103 BETOS oder SOTOV T101 BETOS): zuerst aus der Flugplanroute,

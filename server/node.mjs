@@ -44,7 +44,7 @@ server.on('upgrade', (req, socket, head) => {
       const out = await room.handle(conn, data.toString(), [...conns.values()]);
       if (out.close) { ws.close(1008, 'too many messages'); return; }
       if (out.reply) ws.send(JSON.stringify(out.reply));
-      if (out.broadcast) { const s = JSON.stringify(out.broadcast); for (const c of conns.keys()) if (c.readyState === 1) c.send(s); }
+      if (out.broadcast) { const s = JSON.stringify(out.broadcast); for (const c of conns.keys()) if (c.readyState === 1 && !(out.except && c === ws)) c.send(s); }
     });
   });
 });

@@ -50,7 +50,7 @@ export class Room {
     if (out.reply) ws.send(JSON.stringify(out.reply));
     if (out.broadcast) {
       const s = JSON.stringify(out.broadcast);
-      for (const w of this.ctx.getWebSockets()) { try { w.send(s); } catch (e) { /* Verbindung weg */ } }
+      for (const w of this.ctx.getWebSockets()) { if (out.except && w === ws) continue; try { w.send(s); } catch (e) { /* Verbindung weg */ } }
     }
   }
   async webSocketClose(ws) { try { ws.close(); } catch (e) { /* schon zu */ } }

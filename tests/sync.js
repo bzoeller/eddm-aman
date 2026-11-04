@@ -53,6 +53,16 @@ const until = async (fn, ms = 5000) => { for (const t0 = Date.now(); Date.now() 
   ok(r.reply.items[0].note === 'HOLD AFR1' && r.reply.items.length === 3, 'Verlauf: letzte Aenderungen mit Namen und Text');
   r = await H(n, { t: 'restore', id: 'i', rev: 2 });
   ok(r.broadcast && r.broadcast.set.hold === null && /restored state 2/.test(r.broadcast.note), 'Wiederherstellen auf Stand 2: HOLD AFR1 wieder weg');
+  // Verkehr teilen: nur eingeloggte Lotsen, nur Flieger, die laut Feed verbunden sind, nicht an den Absender
+  feed.pilots = [{ callsign: 'DLH1' }, { callsign: 'EZY2' }];
+  const ctr = { cs: null }, twr = { cs: null };
+  await room.handle(ctr, JSON.stringify({ t: 'hello', cs: 'EDMM_STA_CTR' }), [ctr]); await room.handle(twr, JSON.stringify({ t: 'hello', cs: 'EDDM_TWR' }), [twr]);
+  t += 31000;   // VATSIM-Daten neu holen
+  r = await room.handle(ctr, JSON.stringify({ t: 'traffic', aircraft: [{ cs: 'DLH1', lat: 49, lon: 12 }, { cs: 'GHOST1', lat: 49, lon: 12 }, { cs: 'EZY2', lat: 'x', lon: 1 }] }), [ctr]);
+  ok(r.broadcast && r.broadcast.t === 'traffic' && r.broadcast.by === 'EDMM_STA_CTR' && r.broadcast.aircraft.length === 1 && r.broadcast.aircraft[0].cs === 'DLH1' && r.except === ctr,
+    'CTR teilt Verkehr: nur echte VATSIM-Flieger, erfundene (GHOST1) und kaputte Datensaetze verworfen, nicht zurueck an den Absender');
+  r = await room.handle(twr, JSON.stringify({ t: 'traffic', aircraft: [{ cs: 'DLH1', lat: 49, lon: 12 }] }), [twr]);
+  ok(r.reply && r.reply.code === 'traffic' && !r.broadcast, 'Lotse, der nicht im VATSIM-Feed steht, kann keinen Verkehr verteilen');
   // Notschalter
   const ro = mk({ readonly: true });
   r = await ro.handle(n, JSON.stringify({ t: 'patch', id: 'j', base: 99, set: { hold: [] } }), all);

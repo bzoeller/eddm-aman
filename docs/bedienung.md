@@ -20,7 +20,7 @@ Ohne EuroScope (zum Ausprobieren) läuft eine Simulation: Anflugverkehr über di
 
 ## Abgleich zwischen Lotsen
 
-Alle AMANs teilen sich einen Plan. Was APP ändert (Reihenfolge, HOLD, CHANGE RWY, RECOMPUTE, Sperren, Runway Change, static/dynamic, FLOW, UNDO), sehen alle anderen nach 1 bis 2 Sekunden. Ändern darf nur, wer als EDDM-APP im VATSIM-Netz online ist. Ist der Abgleich gestört, steht es rot am Rand, und die Eingaben gelten nur im eigenen AMAN. Details: [sync.md](sync.md).
+Alle AMANs teilen sich einen Plan. Was APP ändert (Reihenfolge, HOLD, CHANGE RWY, RECOMPUTE, Sperren, Runway Change, static/dynamic, FLOW, UNDO), sehen alle anderen nach 1 bis 2 Sekunden. Ändern darf nur, wer als EDDM-APP im VATSIM-Netz online ist. Flieger außerhalb der eigenen EuroScope-Reichweite kommen von anderen Lotsen (z. B. CTR) und aus dem VATSIM-Datenfeed, so erscheinen sie so früh wie möglich. Ist der Abgleich gestört, steht es rot am Rand, und die Eingaben gelten nur im eigenen AMAN. Details: [sync.md](sync.md).
 
 ## Runway Change und Bahnsperre
 
