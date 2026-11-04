@@ -11,6 +11,7 @@ const until = async (fn, ms = 5000) => { for (const t0 = Date.now(); Date.now() 
 (async () => {
   const { createRoom, CONFIG } = await import('../server/core.mjs');
   ok(CONFIG.writerPattern === cfg.roles.APP, 'Server und AMAN nutzen dieselbe Regel fuer APP (' + CONFIG.writerPattern + ')');
+  ok(CONFIG.topDownPattern === cfg.sync.topDown, 'Server und AMAN nutzen dieselbe Regel fuer Top-down-CTR (' + CONFIG.topDownPattern + ')');
 
   // ---------- 1) Regeln im Kern ----------
   let t = 1e12, stored = null;
@@ -63,6 +64,22 @@ const until = async (fn, ms = 5000) => { for (const t0 = Date.now(); Date.now() 
     'CTR teilt Verkehr: nur echte VATSIM-Flieger, erfundene (GHOST1) und kaputte Datensaetze verworfen, nicht zurueck an den Absender');
   r = await room.handle(twr, JSON.stringify({ t: 'traffic', aircraft: [{ cs: 'DLH1', lat: 49, lon: 12 }] }), [twr]);
   ok(r.reply && r.reply.code === 'traffic' && !r.broadcast, 'Lotse, der nicht im VATSIM-Feed steht, kann keinen Verkehr verteilen');
+  // Top-down: CTR plant nur, wenn laut Feed kein APP online ist
+  {
+    let st2 = null; const f2 = { controllers: [{ callsign: 'EDMM_ALB_CTR', facility: 6 }, { callsign: 'EDDM_N_APP', facility: 5 }], pilots: [] };
+    const room2 = createRoom({ load: async () => st2, store: async x => { st2 = JSON.parse(JSON.stringify(x)); }, feed: async () => f2, now: () => t }, Object.assign({}, CONFIG, { feedCacheMs: 0 }));
+    const alb = { cs: null }, lovv = { cs: null };
+    await room2.handle(alb, JSON.stringify({ t: 'hello', cs: 'EDMM_ALB_CTR' }), [alb]);
+    let q = await room2.handle(alb, JSON.stringify({ t: 'patch', id: 'td1', base: 0, set: { hold: ['X1'] } }), [alb]);
+    ok(q.reply && q.reply.code === 'role' && /EDDM_N_APP is online/.test(q.reply.reason), 'APP online: CTR darf nicht planen');
+    f2.controllers = [{ callsign: 'EDMM_ALB_CTR', facility: 6 }, { callsign: 'LOVV_B_CTR', facility: 6 }];
+    t += 1000;   // VATSIM-Daten neu lesen
+    q = await room2.handle(alb, JSON.stringify({ t: 'patch', id: 'td2', base: 0, set: { hold: ['X1'] } }), [alb]);
+    ok(q.broadcast && q.broadcast.by === 'EDMM_ALB_CTR', 'kein APP online: EDMM-CTR plant top-down');
+    await room2.handle(lovv, JSON.stringify({ t: 'hello', cs: 'LOVV_B_CTR' }), [lovv]);
+    q = await room2.handle(lovv, JSON.stringify({ t: 'patch', id: 'td3', base: 1, set: { hold: [] } }), [lovv]);
+    ok(q.reply && q.reply.code === 'role', 'Wien (LOVV_B) plant auch ohne APP nicht');
+  }
   // Notschalter
   const ro = mk({ readonly: true });
   r = await ro.handle(n, JSON.stringify({ t: 'patch', id: 'j', base: 99, set: { hold: [] } }), all);

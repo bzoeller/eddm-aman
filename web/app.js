@@ -197,7 +197,12 @@
   const myCs = () => (me && me.callsign ? String(me.callsign).toUpperCase() : null);
   /** Darf dieser AMAN den gemeinsamen Plan aendern? (dieselbe Regel wie auf dem Server) */
   const isWriterCs = cs => !!cs && new RegExp(cfg.roles.APP).test(cs);
-  const isWriter = () => !simApi && isWriterCs(myCs());
+  const isTopDownCs = cs => !!cs && !!cfg.sync && !!cfg.sync.topDown && new RegExp(cfg.sync.topDown).test(cs);
+  /** Ist ein EDDM-APP online (eigener Login oder laut EuroScope-Lotsenliste)? */
+  const appOnline = () => [myCs()].concat(online || []).some(c => isWriterCs(String(c || '').toUpperCase()));
+  /** Top-down: CTR uebernimmt die Rolle von APP, solange kein APP online ist. */
+  const topDown = () => !simApi && isTopDownCs(myCs()) && !appOnline();
+  const isWriter = () => !simApi && (isWriterCs(myCs()) || topDown());
   const syncOnline = () => !!(sync && syncStatus && syncStatus.state === 'online' && sync.view());
 
   /**
@@ -206,8 +211,8 @@
    * nach Callsign. Alle anderen AMANs zeigen seine Reihenfolge.
    */
   function autoLead() {
-    const list = [myCs()].concat(online || []).map(c => String(c || '').toUpperCase()).filter(isWriterCs);
-    return [...new Set(list)].sort()[0] || null;
+    const all = [...new Set([myCs()].concat(online || []).map(c => String(c || '').toUpperCase()))].sort();
+    return all.find(isWriterCs) || all.find(isTopDownCs) || null;   // ohne APP: der erste CTR (top-down)
   }
   const sideOwners = () => { const l = autoLead(); return { N: l, S: l }; };
 
@@ -261,7 +266,8 @@
   function syncAuto() {
     const on = syncOnline();
     const own = sideOwners(), me2 = myCs();
-    for (const side of ['N', 'S']) engine.state.follow[side] = on && own[side] !== me2;
+    // ohne APP online verteilt niemand die Reihenfolge: dann rechnet jeder AMAN sie wieder selbst
+    for (const side of ['N', 'S']) engine.state.follow[side] = on && !!own[side] && own[side] !== me2;
     if (!on || !isWriter()) return;
     const v = sync.view();
     for (const side of ['N', 'S']) {
@@ -335,7 +341,8 @@
   function role() {
     if (settings.view !== 'auto') return ['APP', 'TWR'].includes(settings.view) ? settings.view : 'CTR';
     if (simApi) return 'APP';
-    return AmanCore.roleFor(cfg, me && me.callsign);
+    const r = AmanCore.roleFor(cfg, me && me.callsign);
+    return r === 'CTR' && topDown() ? 'APP' : r;   // top-down: CTR bekommt ohne APP die APP-Ansicht
   }
   function viewKey() {
     if (settings.view !== 'auto') return settings.view;
@@ -410,7 +417,8 @@
   const showsItem = (view, i) => view.parts
     ? view.parts.some(pt => i.iaf === pt.iaf && (!pt.stream || i.stream === pt.stream))
     : i.iaf === view.iaf && (!view.streams || view.streams.indexOf(i.stream) >= 0);
-  const canEdit = () => viewKey() === 'APP' && (simApi || role() === 'APP');
+  // planen darf: APP, oder CTR top-down ohne APP (eine Hand-Auswahl der Ansicht gibt keine Rechte)
+  const canEdit = () => viewKey() === 'APP' && (simApi || isWriterCs(myCs()) || topDown());
 
   // ---------- Zeichnen ----------
   function buildColumns(v) {
@@ -774,7 +782,7 @@
     const lines = [];
     if (simApi) lines.push('<b>Simulation</b> ' + settings.simRate + '/h, ' + settings.simSpeed + 'x');
     else lines.push(connErr ? '<b>' + esc(connErr) + '</b>' : '<b>' + esc((me && me.callsign) || 'not connected') + '</b> ' + role());
-    lines.push('View ' + viewKey() + (canEdit() ? ', control enabled' : ', display only'));
+    lines.push('View ' + viewKey() + (canEdit() ? ', control enabled' + (topDown() ? ' (top-down, no APP online)' : '') : ', display only'));
     lines.push('Wind surface ' + wf(w.surface) + ', FL100 ' + wf(w.aloft));
     lines.push('Final-GS ' + (engine.state.finalGsMode === 'fixed' ? 'fixed 140 kt' : 'type and wind'));
     const tc = trafficCounts;

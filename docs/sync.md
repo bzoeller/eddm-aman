@@ -13,6 +13,7 @@ Mit V2 teilen sich alle AMANs einen gemeinsamen Plan. Jede Eingabe von APP ersch
 - **Ändern:** Jeder APP darf alles ändern, auf beiden Bahnen.
 - **Automatische Reihenfolge** (neue Flieger nach ETA, Tausch nach dem Überholen): Die verteilt genau ein AMAN, sonst würde sie zwischen zwei APPs mit leicht anderen ETAs hin und her springen. Das ist der erste online APP nach Callsign (z. B. EDDM_F_APP vor EDDM_N_APP), höchstens alle 5 Sekunden.
   - Alle anderen AMANs, auch die der anderen APPs, sortieren nicht selbst um. Sie zeigen diese Reihenfolge, bis jemand von Hand eingreift.
+  - Ist kein APP online („auto order -“), rechnet jeder AMAN seine Reihenfolge wieder selbst.
 - **static:** Die eingefrorenen Zeiten kommen von APP, so passen die Delay-Balken der CTR genau zu dem, was APP verlangt.
 - **ETA:** Rechnet jeder AMAN selbst aus seinen EuroScope-Daten. Die können sich um einige Sekunden unterscheiden, die Reihenfolge und die Sollzeiten sind trotzdem für alle gleich.
 - **Im Status (MENU):** steht, wessen AMAN die automatische Reihenfolge verteilt: „SYNC online, auto order EDDM_F_APP, last change …“.
@@ -30,7 +31,14 @@ Jeder AMAN sieht von sich aus nur, was sein EuroScope in der eingestellten Reich
 
 ## Wer darf ändern
 
-Nur APP (`^EDDM_.*APP$`, dieselbe Regel wie `roles.APP` in `web/eddm.json`). Der Server prüft bei jeder Änderung im öffentlichen VATSIM-Datenfeed, ob dieses Callsign gerade wirklich als Lotse online ist.
+APP (`^EDDM_.*APP$`, dieselbe Regel wie `roles.APP` in `web/eddm.json`). Der Server prüft bei jeder Änderung im öffentlichen VATSIM-Datenfeed, ob dieses Callsign gerade wirklich als Lotse online ist.
+
+**Top-down:** Ist kein EDDM-APP online, übernimmt ein EDMM-CTR (`^EDMM_.*_CTR$`, `sync.topDown`) die Rolle von APP.
+- Sein AMAN zeigt dann automatisch die APP-Ansicht.
+- Er darf planen und verteilt die automatische Reihenfolge.
+- Im Status steht „control enabled (top-down, no APP online)“.
+- Sobald sich ein APP einloggt, plant wieder APP, und der CTR sieht seine Sektoransicht.
+- Wien (LOVV_B) plant nie. Der Server prüft auch das im VATSIM-Feed.
 
 - **Direkt nach dem Login:** Es kann bis zu einer Minute dauern, bis das Callsign im Feed steht. Bis dahin bleiben die Eingaben in einer Warteschlange und gehen automatisch raus, sobald es so weit ist. Am Rand steht so lange „SYNC: 1 change(s) not shared yet …“.
 - **Dasselbe APP-Callsign zweimal verbunden** (zweites AMAN-Fenster, oder jemand gibt sich als dieser Lotse aus): Der Server nimmt von diesem Callsign keine Änderungen an, und am Rand erscheint eine Warnung. Das zweite Fenster schließen.

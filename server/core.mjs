@@ -12,6 +12,7 @@
 
 export const CONFIG = {
   writerPattern: '^EDDM_.*APP$',              // wie roles.APP in web/eddm.json (ein Test prueft das)
+  topDownPattern: '^EDMM_.*_CTR$',            // Top-down: ist kein APP online, plant der CTR (wie sync.topDown in eddm.json)
   feedUrl: 'https://data.vatsim.net/v3/vatsim-data.json',
   feedCacheMs: 30000,                         // VATSIM aktualisiert etwa alle 15 s
   maxAgeMs: 2 * 3600 * 1000,                  // ein Plan ohne Aenderung seit 2 h gilt als vorbei
@@ -56,7 +57,7 @@ export function rateOk(conn, now, rate = CONFIG.rate) {
  * room = { rev, at, by, keys: { k: { v, rev, by } }, hist: [{ rev, at, by, note, values }], ids: [id] }
  */
 export function createRoom(deps, config = CONFIG) {
-  const writerRe = new RegExp(config.writerPattern);
+  const writerRe = new RegExp(config.writerPattern), topDownRe = new RegExp(config.topDownPattern);
   let feedCache = null, chain = Promise.resolve();
 
   /** Aus dem VATSIM-Feed (hoechstens alle 30 s): schreibende APPs, alle Lotsen, alle Piloten-Callsigns. */
@@ -84,7 +85,7 @@ export function createRoom(deps, config = CONFIG) {
 
   /** Doppelte Verbindungen eines schreibenden Callsigns (z. B. jemand gibt sich als der echte APP aus). */
   function doubled(cs, peers) {
-    return !!cs && writerRe.test(cs) && peers.filter(p => p.cs === cs).length > 1;
+    return !!cs && (writerRe.test(cs) || topDownRe.test(cs)) && peers.filter(p => p.cs === cs).length > 1;
   }
   const dupText = cs => cs + ' is connected twice: changes blocked. Close the second AMAN window (or someone is using your callsign).';
 
@@ -104,11 +105,14 @@ export function createRoom(deps, config = CONFIG) {
   /** Darf conn gerade schreiben? Liefert null oder { code, reason }. */
   async function writeCheck(conn, peers) {
     if (config.readonly) return { code: 'readonly', reason: 'shared plan is read-only at the moment (maintenance)' };
-    if (!conn.cs || !writerRe.test(conn.cs)) return { code: 'role', reason: 'only EDDM APP can change the plan' };
+    const app = !!conn.cs && writerRe.test(conn.cs), top = !!conn.cs && topDownRe.test(conn.cs);
+    if (!app && !top) return { code: 'role', reason: 'only EDDM APP (or EDMM CTR top-down) can change the plan' };
     if (doubled(conn.cs, peers)) return { code: 'double', reason: dupText(conn.cs) };
-    let list;
-    try { list = await online(); } catch (e) { return { code: 'offline', reason: 'VATSIM data not reachable, retrying' }; }
-    if (list.indexOf(conn.cs) < 0) return { code: 'offline', reason: conn.cs + ' is not online on VATSIM yet, retrying (the network list can lag up to a minute after login)' };
+    let fi;
+    try { fi = await feedInfo(); } catch (e) { return { code: 'offline', reason: 'VATSIM data not reachable, retrying' }; }
+    if (fi.ctl.indexOf(conn.cs) < 0) return { code: 'offline', reason: conn.cs + ' is not online on VATSIM yet, retrying (the network list can lag up to a minute after login)' };
+    // Top-down: CTR plant nur, solange kein APP online ist
+    if (top && fi.list.length) return { code: 'role', reason: fi.list[0] + ' is online: APP plans, CTR top-down only without APP' };
     return null;
   }
 

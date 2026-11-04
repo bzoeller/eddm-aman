@@ -1256,6 +1256,8 @@
   "_info": "Abgleich zwischen den AMANs (V2): WebSocket-Adresse des Sync-Servers, null = aus",
   "url": "wss://eddm-aman-sync.bzoeller-ka.workers.dev/ws",
   "_infoTraffic": "Flieger ausserhalb der eigenen EuroScope-Reichweite: von anderen Lotsen (shareTraffic) und aus dem VATSIM-Datenfeed (feed), bis feedRangeNm um EDDM",
+  "_infoTopDown": "Top-down: ist kein EDDM-APP online, plant ein CTR, auf den dieses Muster passt (wie auf dem Server)",
+  "topDown": "^EDMM_.*_CTR$",
   "shareTraffic": true,
   "feed": true,
   "feedRangeNm": 250

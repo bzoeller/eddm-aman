@@ -161,6 +161,22 @@ let p;
     await pr.$eval('#len', el => { el.value = 90; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
     ok(await until(async () => !!(await pr.$('.label[data-cs="FEED123"]')), 15000), 'FEED123 aus dem VATSIM-Feed steht als Label am Zeitstrahl');
     await pr.close();
+    // Top-down: CTR ohne APP online bekommt die APP-Ansicht und darf planen, mit APP online wieder nur seine Ansicht
+    const topPage = async ctl => {
+      const pg = await page();
+      await pg.route('**/vatsim-data.json', r => r.fulfill({ json: feedFix }));
+      await pg.route('**/eddm.json', async r => { const j = await (await r.fetch()).json(); j.sync.url = process.env.AMAN_SYNC_URL; r.fulfill({ json: j }); });
+      await pg.route('**/api/traffic', async r => { const j = await (await r.fetch()).json(); j.me = { callsign: 'EDMM_ALB_CTR', facility: '6' }; j.controllers = ctl; r.fulfill({ json: j }); });
+      pg.on('pageerror', e => errs.push(e.message));
+      await pg.goto('http://127.0.0.1:8471/');
+      return pg;
+    };
+    const ptd = await topPage(['EDMM_ALB_CTR', 'EDDM_TWR']);
+    ok(await until(async () => /control enabled \(top-down/.test(await st(ptd)) && /AMAN EDDM APP/.test(await ptd.textContent('#frameTitle'))), 'kein APP online: CTR sieht die APP-Ansicht und darf planen (top-down)');
+    await ptd.close();
+    const pwa = await topPage(['EDMM_ALB_CTR', 'EDDM_N_APP']);
+    ok(await until(async () => /display only/.test(await st(pwa)) && /CTR ALB/.test(await pwa.textContent('#frameTitle'))), 'APP online: CTR sieht wieder seine Sektoransicht, nur Anzeige');
+    await pwa.close();
     await pt.screenshot({ path: out + '/plugin-sync-twr.png' });
     await pa.close(); await pt.close();
   }
