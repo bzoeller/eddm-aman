@@ -141,7 +141,8 @@
             // (dieselbe Regel wie im AMAN)
             const G = Core.finalGeo(D.path), J = Core.pointAt(D.path, Math.min(D.sAb, best.s + 3));
             const x = G && Core.finalCross(G, ac, J.x - ac.x, J.y - ac.y);
-            if (x && x.u > 0 && x.u < 1 && x.r >= cfg.defaults.finalInterceptMinNm && x.r <= 30) {
+            // direkt aufs Final nur ohne nennenswertes Delay (sonst wuerde er vor seiner geplanten Zeit landen)
+            if (x && x.u > 0 && x.u < 1 && x.r >= cfg.defaults.finalInterceptMinNm && x.r <= 30 && (!info || !(info.delay > 30))) {
               ac.phase = 'direct'; ac.path = D.path; ac.sT = D.path.length - Math.min(cfg.profile.finalNm, x.r); ac.rwy = rwy;
               continue;
             }
@@ -189,7 +190,9 @@
               const tNew = info.eta - saved;
               room = info.delay < 20 && !seq.some(o => o && o !== info && Math.abs(Math.max(o.sta, o.reqSta || o.sta) - tNew) < 130);
             }
-            if (sT - ac.s > dDirect + 4 && room) {
+            // nur, wenn er dort sinnvoll einfaedeln kann (hoechstens 100 Grad gegen die Pfadrichtung), wie im AMAN
+            const okAngle = Core.angDiff(Core.trackDeg(here, T), T.trk) <= 100;
+            if (sT - ac.s > dDirect + 4 && room && okAngle) {
               ac.didCut = true; ac.phase = 'direct'; ac.sT = sT; ac.path = path;
               continue;
             }

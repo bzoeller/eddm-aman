@@ -107,7 +107,8 @@
    * Alle Schnittpunkte des Kursstrahls mit dem Pfad zwischen minS und maxS (ab 0.3 NM, bis maxD voraus),
    * nach Entfernung sortiert: [{ s (Pfadposition), d (Direktentfernung) }].
    */
-  function rayHits(path, p, trk, minS, maxD, maxS) {
+  function rayHits(path, p, trk, minS, maxD, maxS, maxAng) {
+    if (maxAng == null) maxAng = 100;
     if (maxS == null) maxS = path.length;
     const ux = Math.sin(trk * Math.PI / 180), uy = Math.cos(trk * Math.PI / 180), out = [];
     for (let i = 1; i < path.pts.length; i++) {
@@ -116,13 +117,16 @@
       const a = path.pts[i - 1], b = path.pts[i];
       const h = raySeg(p, ux, uy, a, b.x - a.x, b.y - a.y);
       if (!h || h.u < 0.3 || h.u > maxD || h.t < 0 || h.t > 1) continue;
+      // nur Schnitte, an denen der Flieger in Flugrichtung des Pfades einfaedeln kann (hoechstens 100 Grad dagegen),
+      // sonst wuerde z. B. ein schraeger Kurs auf dem Downwind das Final gegen die Landerichtung "treffen"
+      if (angDiff(trk, trackDeg(a, b)) > maxAng) continue;
       const sHit = path.cum[i - 1] + h.t * (path.cum[i] - path.cum[i - 1]);
       if (sHit > minS && sHit <= maxS) out.push({ s: sHit, d: h.u });
     }
     return out.sort((x, y) => x.d - y.d);
   }
   /** Naechster Schnittpunkt oder null. */
-  function rayHit(path, p, trk, minS, maxD, maxS) { return rayHits(path, p, trk, minS, maxD, maxS)[0] || null; }
+  function rayHit(path, p, trk, minS, maxD, maxS, maxAng) { return rayHits(path, p, trk, minS, maxD, maxS, maxAng)[0] || null; }
 
   // ---------- Anfluglinie ----------
   const FINAL_EXT_NM = 30;   // verlaengerte Anfluglinie, auf der ein Heading direkt aufs Final erkannt wird
@@ -547,13 +551,21 @@
         if (trk != null && !ac.inHold) {
           // direkt am IAF zeigt der Kurs beim Eindrehen oft zufaellig auf den Pfad: dort nur, wenn es >= 1 min spart
           const minGain = pr.s > 3 || a.vectored ? 0 : 60;
+          let ct = t, crem = rem;
           for (const hit of rayHits(path, p, trk, pr.s + 1, 30)) {
             if (hit.s - pr.s <= hit.d + cfg.defaults.shortcutMinNm) continue;
             const tHit = hit.d / gs * 3600 + ttgAt(ttg, hit.s);
-            if (tHit < t - minGain) { t = tHit; rem = hit.d + effRemaining(cfg, path, hit.s); }
+            if (tHit < ct - minGain) { ct = tHit; crem = hit.d + effRemaining(cfg, path, hit.s); }
           }
           const fin = finalIntercept(ac, a, path, ttg, p);
-          if (fin && fin.t < t - Math.max(30, minGain)) { t = fin.t; rem = fin.rem; }
+          if (fin && fin.t < ct - Math.max(30, minGain)) { ct = fin.t; crem = fin.rem; }
+          // Abkuerzung erst, wenn sie zwei Updates hintereinander besteht: ein kurzer Kurswechsel
+          // (z. B. Korrektur nach Ueberschiessen des Downwinds) laesst die Planung nicht springen
+          // (laeuft schon eine Abkuerzung oder ist der Flieger per Vektoren gefuehrt, gilt sie sofort weiter)
+          if (ct < t) {
+            a.cutN = (a.cutN || 0) + 1;
+            if (a.cutN >= 2 || a.cutOn || a.vectored) { t = ct; rem = crem; a.cutOn = true; }
+          } else { a.cutN = 0; a.cutOn = false; }
         }
         return etaResult(path, ttg, now, t, rem, { sNew: pr.s });
       }
@@ -608,7 +620,8 @@
       } else {
         let d = pr.cross;
         if (a.trk != null) {
-          const hit = rayHit(P, p, a.trk, minS, 40, D.sAb);
+          // gezielter Wechsel auf den anderen Downwind: dort wird auch steil eingefaedelt, kein Winkelfilter
+          const hit = rayHit(P, p, a.trk, minS, 40, D.sAb, 180);
           if (hit) { d = hit.d; sJoin = hit.s; }
         }
         t = d / gs * 3600 + ttgAt(ttg, sJoin);

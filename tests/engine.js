@@ -187,5 +187,17 @@ for (const D of ['26', '08']) {
   ok(!L.byCs.DCTOLD.direct, 'Direct auf einen schon ueberflogenen Punkt wird ignoriert');
 }
 
+// 11) Downwind leicht ueberschossen und zurueckgedreht: schraeger Kurs zeigt kurz aufs Final (gegen die Landerichtung)
+//     -> die Meilen duerfen nicht springen; ein echter frueher Base-Turn (90 Grad, anhaltend) zaehlt weiter als Abkuerzung
+{
+  const e = Core.createEngine(cfg, { dir: '26' }), P = e.paths.ROKIL['26R'], iA = P.pts.findIndex(q => q.name === 'ABEAM');
+  const q = Core.pointAt(P, P.cum[1] + (P.cum[iA] - P.cum[1]) * 0.6), ll = e.proj.ll(q.x, q.y);
+  const step = (k, dt) => e.update({ aircraft: [Object.assign({ cs: 'OVS', type: 'A320', wtc: 'M', alt: 6000, gs: 220, trk: (q.trk + dt + 360) % 360, hdg: (q.trk + dt + 360) % 360, iaf: 'ROKIL', passedIaf: true }, ll)] }, T0 + 5 * k, {}).byCs.OVS.remainingNm;
+  const m = [step(0, 0), step(1, 40), step(2, 60), step(3, 0)].map(Math.round);
+  ok(Math.max(...m) - Math.min(...m) <= 1, 'Ueberschiessen mit 40/60 Grad Korrektur: Meilen bleiben (' + m.join(' ') + ')');
+  const b1 = step(4, 90), b2 = step(5, 90);
+  ok(b2 < m[0] - 10 && Math.round(b1) === m[0], 'frueher Base-Turn: erst nach dem zweiten Update als Abkuerzung (' + Math.round(b1) + ' -> ' + Math.round(b2) + ' NM)');
+}
+
 console.log(fails ? fails + ' Fehler' : 'alles gruen');
 process.exit(fails ? 1 : 0);
