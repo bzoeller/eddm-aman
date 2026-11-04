@@ -28,6 +28,8 @@ let p;
 
   const b = await chromium.launch();
   p = await b.newPage({ viewport: { width: 960, height: 1080 } });
+  // nie mit dem echten Sync-Server verbinden: der Test meldet sich als EDDM_N_APP
+  await p.route('**/eddm.json', async r => { const j = await (await r.fetch()).json(); j.sync.url = null; r.fulfill({ json: j }); });
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto('http://127.0.0.1:8471/');
   await until(async () => /View APP/.test(await p.evaluate(() => document.getElementById('status').innerText)) && (await p.$$('.col.S .label')).length > 3);

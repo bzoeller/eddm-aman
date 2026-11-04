@@ -1254,7 +1254,7 @@
  },
  "sync": {
   "_info": "Abgleich zwischen den AMANs (V2): WebSocket-Adresse des Sync-Servers, null = aus",
-  "url": null
+  "url": "wss://eddm-aman-sync.bzoeller-ka.workers.dev/ws"
  },
  "roles": {
   "APP": "^EDDM_.*APP$",
