@@ -63,10 +63,12 @@ jobs:
       - name: Version pruefen
         shell: pwsh
         run: |
-          $v = $env:TAG.TrimStart('v')
+          # Eingabe tolerant: V1.2.3, v1.2.3 oder 1.2.3, mit oder ohne Leerzeichen
+          $v = $env:TAG.Trim().TrimStart('v', 'V')
           $f = (Get-Content VERSION -Raw).Trim()
           if ($v -ne $f) { throw "Tag $env:TAG passt nicht zu VERSION ($f)" }
           "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "TAG=v$v" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Bauen (32 Bit)
         shell: pwsh
         run: |
