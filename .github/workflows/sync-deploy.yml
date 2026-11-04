@@ -26,6 +26,7 @@ jobs:
         run: |
           if [ -z "$TOKEN" ]; then echo "::notice::Kein CLOUDFLARE_API_TOKEN, Veroeffentlichen uebersprungen (siehe docs/sync.md)"; echo "ok=false" >> "$GITHUB_OUTPUT"; else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
       - name: Auf Cloudflare veroeffentlichen
+        id: deploy
         if: steps.cf.outputs.ok == 'true'
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
@@ -34,3 +35,14 @@ jobs:
           workingDirectory: server
           wranglerVersion: '4.156.2'
           command: deploy
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.cf.outputs.ok == 'true'
+        with:
+          node-version: 22
+      - name: Live-Test des Servers
+        if: steps.cf.outputs.ok == 'true'
+        env:
+          URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          echo "Server: $URL"
+          node tests/sync-smoke.mjs "$(echo "$URL" | sed 's|^https://|wss://|; s|/*$|/ws|')"
