@@ -151,17 +151,26 @@ for (const D of ['26', '08']) {
   ok(adv(600, 1500, 470, 35000) === 'HOLD', '10 min Delay: Holding');
 }
 
-// 9) EAT im Holding: Zeit am Holding-Fix fuer die naechste passende Luecke, nie vor der eigenen ETA
+// 9) Holding am Flugweg erkannt (EuroScope bietet keine Holding-Liste): Flieger bleibt in der Sequenz,
+//    EAT = Zeit, zu der er den Fix verlassen muss, um seine geplante Zeit zu treffen
 {
-  const eng = Core.createEngine(cfg), sim = Sim.createSim(cfg, { seed: 5, rate: 45, start: T0 });
-  sim.prefill();
-  run(eng, sim, 200, 1);
-  const c = eng.last.bySide.N.find(i => !i.passedIaf && i.etaIaf);
-  eng.toHold(c.cs);
-  const L = eng.update(sim.traffic(), sim.sim.t, sim.sim.wind), h = L.byCs[c.cs];
-  const land = h.eat + h.tIafToThr, seq = L.bySide.N;
-  const gapOk = seq.every(o => Math.abs(o.reqSta - land) >= 60);
-  ok(h.eat >= h.etaIaf - 1 && gapOk, c.cs + ' im Holding: EAT ' + Math.round((h.eat - sim.sim.t) / 60) + ' min, Landung in einer Luecke (mind. 60 s zu jedem anderen)');
+  const e = Core.createEngine(cfg, { dir: '26' }), P = e.proj, F = P.xy(cfg.iafs.ROKIL.lat, cfg.iafs.ROKIL.lon);
+  const other = t => Object.assign({ cs: 'LEAD1', type: 'A320', wtc: 'M', alt: 8000, gs: 220, trk: 126, hdg: 126, iaf: 'ROKIL', passedIaf: true }, P.ll(F.x + 3, F.y - 2));
+  let L, first = null;
+  // Racetrack: 1-min-Schenkel, Kurven mit 3 Grad/s, 220 kt
+  let x = F.x - 4, y = F.y + 1, trk = 126, t = 0;
+  for (let k = 0; k < 120; k++) {
+    const seg = Math.floor(t / 60) % 4, turning = seg === 1 || seg === 3;
+    if (turning) trk = (trk + 15) % 360;
+    x += Math.sin(trk * Math.PI / 180) * 220 * 5 / 3600; y += Math.cos(trk * Math.PI / 180) * 220 * 5 / 3600;
+    L = e.update({ aircraft: [Object.assign({ cs: 'HLD1', type: 'A320', wtc: 'M', alt: 9000, gs: 220, trk, hdg: trk, iaf: 'ROKIL' }, P.ll(x, y)), other(t)] }, T0 + t, {});
+    if (!first && L.byCs.HLD1.holding) first = t;
+    t += 5;
+  }
+  const h = L.byCs.HLD1;
+  ok(first != null && first <= 300 && h.holding === 'ROKIL', 'Kreisen bei ROKIL als Holding erkannt nach ' + first + ' s');
+  ok(L.bySide.N.some(i => i.cs === 'HLD1') && h.eat && Math.abs(h.eat - (T0 + t - 5 + Math.max(0, h.delay))) < 1, 'im Holding weiter in der Sequenz, EAT = jetzt + Delay');
+  ok(!L.byCs.LEAD1.holding, 'geradeaus fliegender Flieger nicht als Holding erkannt');
 }
 
 // 10) Direct aus EuroScope: Lotse gibt "direct DM425" auf dem Downwind -> Rechnung direkt dorthin, dann Standardprofil

@@ -646,17 +646,20 @@
       if (mode === 'ctr') {
         // ein Balken je Minute, die CTR verlieren soll (bis ctrMaxDelayMin); mehr Delay: "+" dahinter
         const more = (it.delayIaf || 0) > cfg.defaults.ctrMaxDelayMin * 60 + 30;
-        const adv = settings.ctrAdvice ? AmanCore.delayAdvice(it, nowSec()) : '';
+        // im Holding: EAT statt Anweisung, sonst die Anweisung (falls eingeschaltet)
+        const adv = it.eat ? 'EAT ' + hhmm(it.eat).slice(3) : (settings.ctrAdvice ? AmanCore.delayAdvice(it, nowSec()) : '');
         right = (adv ? '<span class="adv">' + esc(adv) + '</span>' : '') + '<span class="strokes">' + '<i></i>'.repeat(it.ctrStrokes || 0) + (more ? '<b>+</b>' : '') + '</span>';
       } else {
-        right = '<span class="mi">' + Math.round(it.remainingNm) + '</span>';
+        // im Holding: EAT (Minute) statt der Meilen
+        right = it.eat ? '<span class="mi eat" title="Expected approach time: leave the holding at ' + hhmm(it.eat) + '">EAT ' + hhmm(it.eat).slice(3) + '</span>'
+          : '<span class="mi">' + Math.round(it.remainingNm) + '</span>';
       }
       const st = engine.state.staticMode ? '<span class="st" style="' + (pointsRight ? 'left' : 'right') + ':4px"></span>' : '';
       const man = it.locked ? 'manual' : '';
       // Schriftfarbe nach Strom: z. B. SOTOV T101 und REDBU Q112 in der Farbe der Box, sonst weiss
       const sdef = it.stream && cfg.iafs[it.iaf].streams ? cfg.iafs[it.iaf].streams[it.stream] : null;
       const txt = sdef && sdef.text === 'box' ? ' style="color:var(--txt-' + it.iaf + ')"' : '';
-      const sig = [labelW, LH, pointsRight, it.iaf, it.cs, wtc, txt, mode === 'ctr' ? it.ctrStrokes + ':' + Math.round((it.delayIaf || 0) / 60) + ':' + (settings.ctrAdvice ? AmanCore.delayAdvice(it, nowSec()) : '') : Math.round(it.remainingNm), st, man].join('|');
+      const sig = [labelW, LH, pointsRight, it.iaf, it.cs, wtc, txt, mode === 'ctr' ? it.ctrStrokes + ':' + Math.round((it.delayIaf || 0) / 60) + ':' + (settings.ctrAdvice ? AmanCore.delayAdvice(it, nowSec()) : '') : Math.round(it.remainingNm), st, man, it.eat ? hhmm(it.eat) : ''].join('|');
       el.classList.toggle('flash', (flash[it.cs] || 0) > Date.now());
       if (el.dataset.sig !== sig) {
         el.dataset.sig = sig;
@@ -749,18 +752,14 @@
   function renderHold() {
     const ul = $('holdList');
     const hold = engine.state.hold;
-    // EAT: wann der Flieger das Holding verlassen soll (naechste passende Luecke)
-    const eat = cs => { const it = engine.last.byCs[cs]; return it && it.eat ? hhmm(Math.max(it.eat, nowSec())) : ''; };
-    const sig = hold.map(cs => cs + eat(cs)).join(',') + '|' + canEdit();
+    const sig = hold.join(',') + '|' + canEdit();
     if (ul.dataset.sig === sig) return;
     ul.dataset.sig = sig;
     ul.innerHTML = '';
     const ed = canEdit();
     for (const cs of hold) {
       const li = document.createElement('li');
-      const e = eat(cs);
       li.textContent = cs;
-      if (e) { const s2 = document.createElement('span'); s2.className = 'eat'; s2.textContent = 'EAT ' + e; li.appendChild(s2); }
       li.dataset.cs = cs;
       li.tabIndex = 0;
       li.classList.toggle('editable', ed);

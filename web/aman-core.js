@@ -632,6 +632,36 @@
     }
 
     const fin = v => typeof v === 'number' && isFinite(v);
+    /**
+     * Haelt der Flieger? Aus EuroScope (Holding-Liste) oder, wenn es die nicht gibt, am Flugweg:
+     * mehr als 300 Grad Kurvenaenderung in einer Richtung innerhalb von 6 Minuten. Liefert den Fix (oder 'HOLD') oder null.
+     */
+    function detectHolding(ac, a, p, now) {
+      if (typeof ac.holding === 'string' && ac.holding) return ac.holding.toUpperCase().slice(0, 8);
+      if (ac.holding === true || ac.inHold) return nearestFixName(p) || 'HOLD';
+      if (a.trk == null) return null;
+      const h = (a.trkHist || []).filter(x => now - x.t <= 360);
+      if (!h.length || now - h[h.length - 1].t >= 4) h.push({ t: now, trk: a.trk });
+      a.trkHist = h;
+      let sum = 0;
+      for (let k = 1; k < h.length; k++) sum += ((h[k].trk - h[k - 1].trk + 540) % 360) - 180;
+      if (Math.abs(sum) >= 300) a.holdSince = a.holdSince || now;
+      // wieder raus: in den letzten 3 Minuten kaum noch gekurvt
+      else if (a.holdSince) {
+        const r = h.filter(x => now - x.t <= 180);
+        let s3 = 0;
+        for (let k = 1; k < r.length; k++) s3 += ((r[k].trk - r[k - 1].trk + 540) % 360) - 180;
+        if (now - a.holdSince > 180 && Math.abs(s3) < 60) a.holdSince = null;
+      }
+      return a.holdSince ? (nearestFixName(p) || 'HOLD') : null;
+    }
+    /** Naechster Holding-Fix mit bekannter Position (IAF) innerhalb von 15 NM. */
+    function nearestFixName(p) {
+      let best = null, bd = 15;
+      for (const k of Object.keys(iafXY)) { const d = dist(p, iafXY[k]); if (d < bd) { bd = d; best = k; } }
+      return best;
+    }
+
     /** Datensatz pruefen und bereinigen (ein NaN wuerde die ganze Sequenz verderben). Kaputte Saetze: null. */
     function normalize(raw) {
       if (!raw || typeof raw.cs !== 'string' || !raw.cs.trim() || !fin(raw.lat) || !fin(raw.lon)) return null;
@@ -810,24 +840,6 @@
     }
 
     /**
-     * EAT (Expected Approach Time) fuer einen Flieger im Holding: Zeit, zu der er den Holding-Fix (IAF) verlassen soll,
-     * damit er in die naechste passende Luecke seiner Bahn passt (Staffelung zu Vorder- und Hintermann, keine Sperre).
-     */
-    function expectedApproach(it, byCs, winds) {
-      const side = it.side, seq = st.seq[side].map(cs => byCs[cs]).filter(o => o && o.reqSta != null);
-      let t = it.eta, prev = null, found = false;
-      for (const o of seq) {
-        const earliest = prev ? Math.max(t, prev.reqSta + sepSeconds(prev, it, side, it.dir, winds)) : t;
-        if (earliest + sepSeconds(it, o, side, it.dir, winds) <= o.reqSta) { t = earliest; found = true; break; }
-        prev = o;
-      }
-      if (!found && prev) t = Math.max(t, prev.reqSta + sepSeconds(prev, it, side, it.dir, winds));
-      let guard = 0, c;
-      while ((c = closedAt(side, t)) && guard++ < 20) t = c.to;
-      return t - (it.tIafToThr || 0);
-    }
-
-    /**
      * Haupt-Update. traffic = { aircraft: [...], activeDir?: '26'|'08', metar? }
      * winds = { surface:{dir,spd}, aloft:{dir,spd} }
      */
@@ -866,6 +878,7 @@
         } else a.prevP = p;
 
         const iaf = assignIafStream(ac, a, p);
+        const holding = detectHolding(ac, a, p, now);
         const { side, dir: acDir, r } = assignRunway(ac, a, iaf, now, winds, dir, ch, esMixed);
         if (r.vectored) a.vectored = true;
         a.side = side;
@@ -896,7 +909,7 @@
           cs: ac.cs, type: ac.type || '', wtc: ac.wtc || 'M', iaf, stream: a.stream, side,
           dir: acDir, rwy: rwyId(side, acDir), tFinal: r.tFinal, eta: r.eta, etaIaf: r.etaIaf, tIafToThr: r.tIafToThr,
           remainingNm: r.remainingNm, passedIaf: r.passedIaf, hold: !!a.hold,
-          locked: !!a.locked, alt: ac.alt, gs: ac.gs, direct: r.direct || null,
+          locked: !!a.locked, alt: ac.alt, gs: ac.gs, direct: r.direct || null, holding,
           trackedBy: typeof ac.trackedBy === 'string' && ac.trackedBy ? ac.trackedBy.toUpperCase() : null
         });
       }
@@ -925,7 +938,9 @@
       const tgtDir = ch ? ch.to : dir;
       maintainSeq(items, byCs, tgtDir);
       schedule(byCs, ch, tgtDir, winds);
-      for (const i of items) if (i.hold) { i.sta = i.eta; i.delay = 0; i.eat = expectedApproach(i, byCs, winds); }
+      for (const i of items) if (i.hold) { i.sta = i.eta; i.delay = 0; }
+      // Flieger im Holding: EAT = Zeit, zu der er den Holding-Fix verlassen soll, um seine geplante Zeit zu treffen
+      for (const i of items) i.eat = i.holding && !i.hold ? now + Math.max(0, i.delay || 0) : null;
 
       const bySide = { N: st.seq.N.map(cs => byCs[cs]), S: st.seq.S.map(cs => byCs[cs]) };
       last = { list: items, bySide, byCs, now, dir, winds, dirChange: ch, esDir: traffic.activeDir || null };

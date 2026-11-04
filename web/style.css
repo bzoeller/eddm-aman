@@ -121,7 +121,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 .label .strokes { position: relative; margin-left: auto; display: flex; gap: 3px; }
 .label .adv { position: relative; margin-left: auto; padding-right: 5px; font: 700 11px var(--font-mono); color: var(--miles); white-space: nowrap; }
 .label .adv + .strokes { margin-left: 0; }
-.hold-list .eat { margin-left: 8px; font: 11px var(--font-mono); color: var(--muted); }
+.label .mi.eat { font-size: .8em; }
 .label .strokes i { display: block; width: 9px; height: 3px; background: var(--miles); }
 .label .strokes { gap: 2px; }
 .label.editable { cursor: grab; }

@@ -63,8 +63,8 @@ function serve() {
   // 3) HOLD
   await p.click('#acmenu button[data-act=hold]'); await until(p, inHold, csN);
   ok((await p.$$eval('#holdList li', l => l.map(x => x.dataset.cs))).includes(csN), csN + ' im Hold');
-  const eatTxt = await p.$eval('#holdList li[data-cs="' + csN + '"]', li => li.textContent);
-  ok(/EAT \d\d:\d\d/.test(eatTxt), 'Hold-Feld zeigt die EAT: ' + eatTxt);
+  // das Hold-Feld nimmt nur aus der Sequenz (kein Holding, keine EAT)
+  ok((await p.$eval('#holdList li[data-cs="' + csN + '"]', li => li.textContent)) === csN, 'Hold-Feld zeigt nur das Callsign');
   ok(!(await labelsIn(p, 'N')).includes(csN), csN + ' nicht mehr auf Nord');
 
   // 4) Aus dem Hold per Menue: RECOMPUTE plant ihn wieder nach ETA ein

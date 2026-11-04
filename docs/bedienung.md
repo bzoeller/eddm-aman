@@ -78,7 +78,9 @@ In der hellen Version (MENU → Theme) wird weiße Schrift schwarz, Gelb und Wei
 
 ## Holdings
 
-**EAT im Hold-Feld:** Neben jedem Flieger im Hold-Feld steht die Expected Approach Time („EAT 14:32“). Zu dieser Zeit soll er den Holding-Fix verlassen, damit er in die nächste passende Lücke seiner Bahn passt, mit voller Staffelung zu Vorder- und Hintermann und unter Berücksichtigung von Sperren. Nie früher, als er ohnehin am Fix wäre.
+**Hold-Feld:** Nimmt einen Flieger nur aktiv aus der Sequenz, unabhängig davon, ob er wirklich hält.
+
+**Flieger im Holding:** Der AMAN erkennt am Flugweg, dass ein Flieger hält: mehr als 300 Grad Kurve in dieselbe Richtung innerhalb von 6 Minuten. Das dauert etwa 3 bis 4 Minuten, eine Holding-Liste stellt EuroScope Plugins nicht zur Verfügung. Der Flieger bleibt ganz normal in der Sequenz. Im Label steht statt der Meilen „EAT 56“ (Minute). Das ist die Expected Approach Time, also wann er den Holding-Fix verlassen muss, um seine geplante Landezeit zu treffen: jetzt plus das noch abzubauende Delay. Bei CTR steht die EAT vor den Balken. Fliegt er 3 Minuten ohne nennenswerte Kurve weiter, gilt er nicht mehr als im Holding.
 
 **Delay-Anweisung für CTR:** In der CTR-Ansicht steht neben den Balken ein Vorschlag, wie das Delay bis zum IAF abgebaut werden kann:
 - zuerst über die Geschwindigkeit, oberhalb FL245 als Mach (z. B. „M.76“), darunter als IAS (z. B. „250kt“, nicht unter 250 kt über FL100 bzw. 220 kt darunter),
