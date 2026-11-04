@@ -5,8 +5,10 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const [file, pubFile = new URL('./update-public-key.txt', import.meta.url).pathname] = process.argv.slice(2);
+// fileURLToPath statt .pathname: unter Windows waere das sonst /D:/... und damit ungueltig
+const [file, pubFile = path.join(path.dirname(fileURLToPath(import.meta.url)), 'update-public-key.txt')] = process.argv.slice(2);
 const fail = m => { console.error('FEHLER: ' + m); process.exit(1); };
 if (!file) fail('Aufruf: node tools/sign-manifest.mjs <manifest.txt> [public-key.txt]');
 const raw = (process.env.UPDATE_SIGNING_KEY || '').trim();
