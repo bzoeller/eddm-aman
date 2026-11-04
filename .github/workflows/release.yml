@@ -72,10 +72,15 @@ jobs:
       - name: Bauen (32 Bit)
         shell: pwsh
         run: |
-          cmake -S plugin -B build -A Win32 -DAMAN_VERSION=$env:VERSION
+          cmake -S plugin -B build -A Win32 -DAMAN_VERSION=$env:VERSION -DAMAN_REQUIRE_UPDATE_KEY=ON
           if ($LASTEXITCODE -ne 0) { throw "CMake fehlgeschlagen" }
           cmake --build build --config Release
           if ($LASTEXITCODE -ne 0) { throw "Build fehlgeschlagen" }
+          # Sicherung: ohne eingebauten Schluessel wuerde dieses Plugin nie wieder ein Update annehmen
+          $key = (Get-Content tools/update-public-key.txt -Raw).Trim().ToLower()
+          $dll = [IO.File]::ReadAllText("$PWD/build/Release/EDDM-AMAN.dll", [Text.Encoding]::GetEncoding(28591))
+          if (-not $dll.Contains($key)) { throw "Update-Schluessel fehlt in der DLL" }
+          Write-Host "Update-Schluessel ist in der DLL." 
       - name: Dateien und Pruefsummen
         shell: pwsh
         run: |
