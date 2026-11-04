@@ -29,6 +29,7 @@ public:
 
     /** Verkehrsbild jetzt neu aufbauen (wird von OnTimer alle 5 s aufgerufen, im EuroScope-Thread). */
     void BuildSnapshot();
+    void DumpFlightPlan(std::string callsign);
     std::string CurrentJson();
 
     static const unsigned short kPort = 8471;

@@ -123,6 +123,10 @@ void CAmanPlugin::OnNewMetarReceived(const char* station, const char* fullMetar)
 bool CAmanPlugin::OnCompileCommand(const char* command) {
     std::string c = upper(command);
     if (c.rfind(".AMAN", 0) != 0) return false;
+    if (c.rfind(".AMAN DUMP ", 0) == 0) {   // z. B. ".aman dump DLH09E": alles, was das Plugin zum Flieger lesen kann
+        DumpFlightPlan(c.substr(11));
+        return true;
+    }
     if (c.find("UPDATE") != std::string::npos) {
         Message("AMAN: checking for updates ...");
         StartUpdateCheck(true);
@@ -135,6 +139,31 @@ bool CAmanPlugin::OnCompileCommand(const char* command) {
 #endif
     Message(server_ && server_->running() ? "AMAN: http://127.0.0.1:8471/" : "AMAN server not running (port 8471 in use?)");
     return true;
+}
+
+/**
+ * Diagnose: zeigt Scratchpad, Strip-Annotations und Lotsenzuweisungen eines Fliegers in der Nachrichtenzeile.
+ * Damit laesst sich herausfinden, ob andere Plugins (z. B. TopSky) dort etwas ablegen, etwa ein Holding.
+ */
+void CAmanPlugin::DumpFlightPlan(std::string cs) {
+    while (!cs.empty() && cs.back() == ' ') cs.pop_back();
+    for (CRadarTarget rt = RadarTargetSelectFirst(); rt.IsValid(); rt = RadarTargetSelectNext(rt)) {
+        if (upper(rt.GetCallsign()) != cs) continue;
+        CFlightPlan fp = rt.GetCorrelatedFlightPlan();
+        if (!fp.IsValid()) { Message("AMAN dump " + cs + ": no flight plan"); return; }
+        CFlightPlanControllerAssignedData ad = fp.GetControllerAssignedData();
+        auto s = [](const char* v) { return std::string(v ? v : ""); };
+        Message("AMAN dump " + cs + ": scratchpad '" + s(ad.GetScratchPadString()) + "', direct '" + s(ad.GetDirectToPointName()) +
+                "', hdg " + std::to_string(ad.GetAssignedHeading()) + ", spd " + std::to_string(ad.GetAssignedSpeed()) +
+                ", mach " + std::to_string(ad.GetAssignedMach()) + ", cfl " + std::to_string(ad.GetClearedAltitude()));
+        for (int i = 0; i < 9; i++) {
+            std::string a = s(ad.GetFlightStripAnnotation(i));
+            if (!a.empty()) Message("AMAN dump " + cs + ": annotation " + std::to_string(i) + " '" + a + "'");
+        }
+        Message("AMAN dump " + cs + ": end");
+        return;
+    }
+    Message("AMAN dump " + cs + ": not found");
 }
 
 void CAmanPlugin::BuildSnapshot() {

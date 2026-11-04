@@ -46,6 +46,8 @@ int main(int argc, char** argv) {
     p->OnCompileCommand(".aman");
     for (int counter = 0; g_run; counter++) {
         load(argv[2]);
+        // einmal den Diagnose-Befehl fuer den ersten Flieger (Test von .aman dump)
+        if (counter == 2 && !world().targets.empty()) p->OnCompileCommand((".aman dump " + world().targets[0].cs).c_str());
         p->OnTimer(counter);
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
