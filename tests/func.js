@@ -62,7 +62,9 @@ function serve() {
 
   // 3) HOLD
   await p.click('#acmenu button[data-act=hold]'); await until(p, inHold, csN);
-  ok((await p.$$eval('#holdList li', l => l.map(x => x.textContent))).includes(csN), csN + ' im Hold');
+  ok((await p.$$eval('#holdList li', l => l.map(x => x.dataset.cs))).includes(csN), csN + ' im Hold');
+  const eatTxt = await p.$eval('#holdList li[data-cs="' + csN + '"]', li => li.textContent);
+  ok(/EAT \d\d:\d\d/.test(eatTxt), 'Hold-Feld zeigt die EAT: ' + eatTxt);
   ok(!(await labelsIn(p, 'N')).includes(csN), csN + ' nicht mehr auf Nord');
 
   // 4) Aus dem Hold per Menue: RECOMPUTE plant ihn wieder nach ETA ein
@@ -70,7 +72,7 @@ function serve() {
   ok(await p.$eval('#acmenu button[data-act=hold]', x => x.disabled), 'HOLD im Hold gesperrt');
   await p.click('#acmenu button[data-act=recompute]'); await until(p, cs => !document.querySelector('#holdList li[data-cs="' + cs + '"]'), csN);
   const back = (await labelsIn(p, 'N')).includes(csN) || (await labelsIn(p, 'S')).includes(csN);
-  ok(back && !(await p.$$eval('#holdList li', l => l.map(x => x.textContent))).includes(csN), csN + ' per RECOMPUTE zurueck in der Sequenz');
+  ok(back && !(await p.$$eval('#holdList li', l => l.map(x => x.dataset.cs))).includes(csN), csN + ' per RECOMPUTE zurueck in der Sequenz');
 
   // 5) CHANGE RWY
   const csS = (await labelsIn(p, 'S'))[4];
@@ -122,6 +124,12 @@ function serve() {
     await p.waitForFunction(two => { const l = [...document.querySelectorAll('.col.C .label .cs')]; return l.length && (!two || new Set(l.map(x => getComputedStyle(x).color)).size === 2); }, v === 'BETOS', { timeout: 120000 }).catch(() => null);
     counts[v] = (await p.$$('.col.C .label')).length;
     if (v === 'BETOS') {
+      const advs = await p.$$eval('.col.C .label .adv', l => l.map(x => x.textContent));
+      ok(advs.length > 0 && advs.every(x => /^(M\.\d\d|\d{3}kt)?( ?\+\d+min)?$|^HOLD$/.test(x)), 'CTR-Labels mit Anweisung: ' + advs.slice(0, 4).join(' | '));
+      // jeder Lotse kann die Anweisung im MENU ausblenden
+      await p.click('#btnMenu'); await p.selectOption('#selAdvice', 'off'); await p.click('#btnClose');
+      ok(await p.waitForFunction(() => !document.querySelector('.col.C .label .adv'), null, { timeout: 3000 }).then(() => true).catch(() => false), 'Anweisung im MENU ausgeblendet');
+      await p.click('#btnMenu'); await p.selectOption('#selAdvice', 'on'); await p.click('#btnClose');
       // DISUN T103: weisse Schrift, SOTOV T101: gelbe Schrift in gelber Box
       const cols = await p.$$eval('.col.C .label .cs', l => [...new Set(l.map(x => getComputedStyle(x).color))]);
       ok(cols.length === 2, 'combined zeigt beide Stroeme (zwei Schriftfarben): ' + cols.join(' / '));
@@ -190,9 +198,9 @@ function serve() {
     const csU = (await labelsIn(p, 'S'))[3];
     await p.click('.col.S .label[data-cs="' + csU + '"]'); await shown(p, '#acmenu');
     await p.click('#acmenu button[data-act=hold]'); await until(p, inHold, csU);
-    ok((await p.$$eval('#holdList li', l => l.map(x => x.textContent))).includes(csU), 'UNDO-Test: ' + csU + ' im Hold');
+    ok((await p.$$eval('#holdList li', l => l.map(x => x.dataset.cs))).includes(csU), 'UNDO-Test: ' + csU + ' im Hold');
     await p.click('#btnUndo'); await until(p, onSide, ['S', csU]);
-    ok(!(await p.$$eval('#holdList li', l => l.map(x => x.textContent))).includes(csU) && (await labelsIn(p, 'S')).includes(csU), 'UNDO holt ' + csU + ' zurueck auf Sued');
+    ok(!(await p.$$eval('#holdList li', l => l.map(x => x.dataset.cs))).includes(csU) && (await labelsIn(p, 'S')).includes(csU), 'UNDO holt ' + csU + ' zurueck auf Sued');
   }
 
   // 11) EuroScope dreht das AMAN nicht: Simulation meldet 08, AMAN bleibt 26 und zeigt eine Warnung

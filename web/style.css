@@ -118,6 +118,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, .label:focus-vi
 .label .mi { position: relative; margin-left: auto; color: var(--miles); font-size: inherit; font-variant-numeric: tabular-nums; }
 .label .st { position: absolute; top: 3px; bottom: 3px; width: 12px; background: var(--static); }
 .label .strokes { position: relative; margin-left: auto; display: flex; gap: 3px; }
+.label .adv { position: relative; margin-left: auto; padding-right: 5px; font: 700 11px var(--font-mono); color: var(--miles); white-space: nowrap; }
+.label .adv + .strokes { margin-left: 0; }
+.hold-list .eat { margin-left: 8px; font: 11px var(--font-mono); color: var(--muted); }
 .label .strokes i { display: block; width: 9px; height: 3px; background: var(--miles); }
 .label .strokes { gap: 2px; }
 .label.editable { cursor: grab; }

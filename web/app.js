@@ -14,7 +14,8 @@
   let cfg, engine, simApi = null;
   let settings = {
     source: isPluginHost ? 'plugin' : 'sim', view: 'auto', theme: 'dark',
-    simRate: 40, simSpeed: 5, simWind: '250/10'
+    simRate: 40, simSpeed: 5, simWind: '250/10',
+    ctrAdvice: true   // Anweisung zum Delay (Speed/Umweg/Holding) im CTR-Label, jeder Lotse fuer sich
   };
   let traffic = { aircraft: [] }, me = null, metar = null, aloft = null, lastData = 0, connErr = null, dataTime = null;
   let pollSeq = 0, pollTimer = null, aloftTimer = null;
@@ -645,7 +646,8 @@
       if (mode === 'ctr') {
         // ein Balken je Minute, die CTR verlieren soll (bis ctrMaxDelayMin); mehr Delay: "+" dahinter
         const more = (it.delayIaf || 0) > cfg.defaults.ctrMaxDelayMin * 60 + 30;
-        right = '<span class="strokes">' + '<i></i>'.repeat(it.ctrStrokes || 0) + (more ? '<b>+</b>' : '') + '</span>';
+        const adv = settings.ctrAdvice ? AmanCore.delayAdvice(it, nowSec()) : '';
+        right = (adv ? '<span class="adv">' + esc(adv) + '</span>' : '') + '<span class="strokes">' + '<i></i>'.repeat(it.ctrStrokes || 0) + (more ? '<b>+</b>' : '') + '</span>';
       } else {
         right = '<span class="mi">' + Math.round(it.remainingNm) + '</span>';
       }
@@ -654,13 +656,13 @@
       // Schriftfarbe nach Strom: z. B. SOTOV T101 und REDBU Q112 in der Farbe der Box, sonst weiss
       const sdef = it.stream && cfg.iafs[it.iaf].streams ? cfg.iafs[it.iaf].streams[it.stream] : null;
       const txt = sdef && sdef.text === 'box' ? ' style="color:var(--txt-' + it.iaf + ')"' : '';
-      const sig = [labelW, LH, pointsRight, it.iaf, it.cs, wtc, txt, mode === 'ctr' ? it.ctrStrokes + ':' + Math.round((it.delayIaf || 0) / 60) : Math.round(it.remainingNm), st, man].join('|');
+      const sig = [labelW, LH, pointsRight, it.iaf, it.cs, wtc, txt, mode === 'ctr' ? it.ctrStrokes + ':' + Math.round((it.delayIaf || 0) / 60) + ':' + (settings.ctrAdvice ? AmanCore.delayAdvice(it, nowSec()) : '') : Math.round(it.remainingNm), st, man].join('|');
       el.classList.toggle('flash', (flash[it.cs] || 0) > Date.now());
       if (el.dataset.sig !== sig) {
         el.dataset.sig = sig;
         el.innerHTML = labelSvg(labelW, LH, pointsRight, color, !!man) + st + '<span class="cs"' + txt + '>' + esc(it.cs) + '</span><span class="wtc"' + txt + '>' + wtc + '</span>' + right;
         el.title = man ? 'placed manually (RECOMPUTE releases)' : '';
-        el.setAttribute('aria-label', it.cs + (wtc ? ' ' + wtc : '') + (it.stream ? ' via ' + it.stream : '') + ', ' + hhmm(it._t) + (mode === 'ctr' ? ', ' + (it.ctrStrokes || 0) + ' min to lose' : ', ' + Math.round(it.remainingNm) + ' NM'));
+        el.setAttribute('aria-label', it.cs + (wtc ? ' ' + wtc : '') + (it.stream ? ' via ' + it.stream : '') + ', ' + hhmm(it._t) + (mode === 'ctr' ? ', ' + (it.ctrStrokes || 0) + ' min to lose' + (settings.ctrAdvice && AmanCore.delayAdvice(it, nowSec()) ? ', advice ' + AmanCore.delayAdvice(it, nowSec()) : '') : ', ' + Math.round(it.remainingNm) + ' NM'));
       }
     }
     for (const cs of Object.keys(c.labels)) if (!keep[cs]) { c.labels[cs].remove(); delete c.labels[cs]; }
@@ -747,14 +749,18 @@
   function renderHold() {
     const ul = $('holdList');
     const hold = engine.state.hold;
-    const sig = hold.join(',') + '|' + canEdit();
+    // EAT: wann der Flieger das Holding verlassen soll (naechste passende Luecke)
+    const eat = cs => { const it = engine.last.byCs[cs]; return it && it.eat ? hhmm(Math.max(it.eat, nowSec())) : ''; };
+    const sig = hold.map(cs => cs + eat(cs)).join(',') + '|' + canEdit();
     if (ul.dataset.sig === sig) return;
     ul.dataset.sig = sig;
     ul.innerHTML = '';
     const ed = canEdit();
     for (const cs of hold) {
       const li = document.createElement('li');
+      const e = eat(cs);
       li.textContent = cs;
+      if (e) { const s2 = document.createElement('span'); s2.className = 'eat'; s2.textContent = 'EAT ' + e; li.appendChild(s2); }
       li.dataset.cs = cs;
       li.tabIndex = 0;
       li.classList.toggle('editable', ed);
@@ -991,6 +997,7 @@
 
     $('selSource').addEventListener('change', e => { settings.source = e.target.value; save(); startSource(); syncSheet(); });
     $('selTheme').addEventListener('change', e => { settings.theme = e.target.value; applyTheme(); syncQuick(); save(); });
+    $('selAdvice').addEventListener('change', e => { settings.ctrAdvice = e.target.value === 'on'; save(); tick(); });
     $('selView').addEventListener('change', e => { settings.view = e.target.value; syncQuick(); save(); tick(); });
     $('qView').addEventListener('change', e => { settings.view = e.target.value; $('selView').value = settings.view; save(); tick(); });
     $('qTheme').addEventListener('change', e => { settings.theme = e.target.value; $('selTheme').value = settings.theme; applyTheme(); save(); });
@@ -1017,6 +1024,7 @@
     $('selSource').querySelector('option[value="plugin"]').disabled = !isPluginHost;
     $('selView').value = settings.view;
     $('selTheme').value = settings.theme;
+    $('selAdvice').value = settings.ctrAdvice === false ? 'off' : 'on';
     $('selGs').value = engine.state.finalGsMode;
     $('rateN').value = engine.state.rate.N; $('rateS').value = engine.state.rate.S;
     $('simRate').value = String(settings.simRate); $('simSpeed').value = String(settings.simSpeed); $('simWind').value = settings.simWind;

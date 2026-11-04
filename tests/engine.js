@@ -142,5 +142,27 @@ for (const D of ['26', '08']) {
   ok(it.rwy === '08L' && it.remainingNm < 32, 'Heading auf verlaengerte Anfluglinie 08L: ' + it.rwy + ', ' + it.remainingNm.toFixed(0) + ' NM (vorher 61 ueber BETOS)');
 }
 
+// 8) CTR-Anweisung: zuerst Speed (oben Mach, unten IAS), Rest als Umweg, ab 8 min Holding
+{
+  const now = 1e9, adv = (d, T, gs, alt) => Core.delayAdvice({ delayIaf: d, etaIaf: now + T, gs, alt }, now);
+  ok(adv(20, 1200, 470, 35000) === '', 'unter 30 s Delay: keine Anweisung');
+  ok(/^M\.7\d$/.test(adv(60, 1200, 470, 35000)), '1 min auf 20 min in FL350: nur Mach (' + adv(60, 1200, 470, 35000) + ')');
+  ok(/^250kt \+\dmin$/.test(adv(120, 720, 380, 20000)), '2 min auf 12 min in FL200: 250 kt und Umweg (' + adv(120, 720, 380, 20000) + ')');
+  ok(adv(600, 1500, 470, 35000) === 'HOLD', '10 min Delay: Holding');
+}
+
+// 9) EAT im Holding: Zeit am Holding-Fix fuer die naechste passende Luecke, nie vor der eigenen ETA
+{
+  const eng = Core.createEngine(cfg), sim = Sim.createSim(cfg, { seed: 5, rate: 45, start: T0 });
+  sim.prefill();
+  run(eng, sim, 200, 1);
+  const c = eng.last.bySide.N.find(i => !i.passedIaf && i.etaIaf);
+  eng.toHold(c.cs);
+  const L = eng.update(sim.traffic(), sim.sim.t, sim.sim.wind), h = L.byCs[c.cs];
+  const land = h.eat + h.tIafToThr, seq = L.bySide.N;
+  const gapOk = seq.every(o => Math.abs(o.reqSta - land) >= 60);
+  ok(h.eat >= h.etaIaf - 1 && gapOk, c.cs + ' im Holding: EAT ' + Math.round((h.eat - sim.sim.t) / 60) + ' min, Landung in einer Luecke (mind. 60 s zu jedem anderen)');
+}
+
 console.log(fails ? fails + ' Fehler' : 'alles gruen');
 process.exit(fails ? 1 : 0);

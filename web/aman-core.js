@@ -336,6 +336,36 @@
     return out;
   }
 
+  /**
+   * Konkrete Anweisung fuer CTR, um das Delay bis zum IAF abzubauen: zuerst ueber die Geschwindigkeit
+   * (oben Mach, unten IAS, in sinnvollen Grenzen), was dann noch fehlt als Umweg/Vektoren (+min),
+   * ab holdMin Minuten Rest ein Holding. Liefert '' bei weniger als 30 s Delay.
+   */
+  function delayAdvice(it, now, opt) {
+    const o = Object.assign({ holdMin: 8, minMach: 0.70, maxMachCut: 0.06, minIasHigh: 250, minIasLow: 220 }, opt || {});
+    const D = it.delayIaf || 0, T = (it.etaIaf || 0) - now;
+    if (D < 30 || !(T > 60)) return '';
+    const gs = it.gs > 100 ? it.gs : 400, alt = it.alt || 20000;
+    const ratio = T / (T + D);            // noetiger Faktor fuer die Geschwindigkeit bis zum IAF
+    let text, factor;                      // factor: wirklich moegliche Verlangsamung
+    if (alt >= 24500) {
+      const a = 661.5 * Math.sqrt((288.15 - 0.0019812 * Math.min(alt, 36089)) / 288.15);   // Schallgeschwindigkeit in kt
+      const m = gs / a, mMin = Math.max(o.minMach, m - o.maxMachCut);
+      const mNew = Math.max(mMin, Math.floor(m * ratio * 100) / 100);
+      factor = mNew / m; text = 'M.' + String(Math.round(mNew * 100)).padStart(2, '0');
+    } else {
+      const ias = gs / (1 + Math.min(alt, 40000) / 1000 * 0.02);   // grob, Wind vernachlaessigt
+      const iMin = alt >= 10000 ? o.minIasHigh : o.minIasLow;
+      const iNew = Math.max(iMin, Math.floor(ias * ratio / 10) * 10);
+      factor = iNew / ias; text = iNew + 'kt';
+    }
+    if (factor >= 0.995) text = '';        // Geschwindigkeit bringt nichts (schon langsam)
+    const rest = D - T * (1 / Math.min(factor, 1) - 1);
+    if (rest / 60 >= o.holdMin) return 'HOLD';
+    if (rest > 45) text = (text ? text + ' ' : '') + '+' + Math.round(rest / 60) + 'min';
+    return text;
+  }
+
   /** Pflichtwerte der Config pruefen: Standardwerte stehen nur in eddm.json, nicht im Code. */
   const REQUIRED = {
     defaults: ['spacingNm', 'ratePerRwy', 'timelineMin', 'captureNm', 'hysteresisSec', 'ctrMaxDelayMin', 'fixedFinalGs', 'bentLineBelowMin',
@@ -759,6 +789,24 @@
     }
 
     /**
+     * EAT (Expected Approach Time) fuer einen Flieger im Holding: Zeit, zu der er den Holding-Fix (IAF) verlassen soll,
+     * damit er in die naechste passende Luecke seiner Bahn passt (Staffelung zu Vorder- und Hintermann, keine Sperre).
+     */
+    function expectedApproach(it, byCs, winds) {
+      const side = it.side, seq = st.seq[side].map(cs => byCs[cs]).filter(o => o && o.reqSta != null);
+      let t = it.eta, prev = null, found = false;
+      for (const o of seq) {
+        const earliest = prev ? Math.max(t, prev.reqSta + sepSeconds(prev, it, side, it.dir, winds)) : t;
+        if (earliest + sepSeconds(it, o, side, it.dir, winds) <= o.reqSta) { t = earliest; found = true; break; }
+        prev = o;
+      }
+      if (!found && prev) t = Math.max(t, prev.reqSta + sepSeconds(prev, it, side, it.dir, winds));
+      let guard = 0, c;
+      while ((c = closedAt(side, t)) && guard++ < 20) t = c.to;
+      return t - (it.tIafToThr || 0);
+    }
+
+    /**
      * Haupt-Update. traffic = { aircraft: [...], activeDir?: '26'|'08', metar? }
      * winds = { surface:{dir,spd}, aloft:{dir,spd} }
      */
@@ -827,7 +875,7 @@
           cs: ac.cs, type: ac.type || '', wtc: ac.wtc || 'M', iaf, stream: a.stream, side,
           dir: acDir, rwy: rwyId(side, acDir), tFinal: r.tFinal, eta: r.eta, etaIaf: r.etaIaf, tIafToThr: r.tIafToThr,
           remainingNm: r.remainingNm, passedIaf: r.passedIaf, hold: !!a.hold,
-          locked: !!a.locked,
+          locked: !!a.locked, alt: ac.alt, gs: ac.gs,
           trackedBy: typeof ac.trackedBy === 'string' && ac.trackedBy ? ac.trackedBy.toUpperCase() : null
         });
       }
@@ -856,7 +904,7 @@
       const tgtDir = ch ? ch.to : dir;
       maintainSeq(items, byCs, tgtDir);
       schedule(byCs, ch, tgtDir, winds);
-      for (const i of items) if (i.hold) { i.sta = i.eta; i.delay = 0; }
+      for (const i of items) if (i.hold) { i.sta = i.eta; i.delay = 0; i.eat = expectedApproach(i, byCs, winds); }
 
       const bySide = { N: st.seq.N.map(cs => byCs[cs]), S: st.seq.S.map(cs => byCs[cs]) };
       last = { list: items, bySide, byCs, now, dir, winds, dirChange: ch, esDir: traffic.activeDir || null };
@@ -1034,7 +1082,7 @@
 
   return {
     createEngine, sanitizeState, downwindPaths, streamByRoute, roleFor, ctrSector, parseMetarWind, makeProjection, preparePaths, pointAt,
-    planToKeys, keysToPlan, diffKeys,
+    planToKeys, keysToPlan, diffKeys, delayAdvice,
     // gemeinsam mit der Simulation
     headwind, tasFromIas, trackDeg, angDiff, altAt, profileIas, vappFor, rayHit, rayHits, finalGeo, finalCross
   };

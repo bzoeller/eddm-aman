@@ -77,6 +77,16 @@ In der hellen Version (MENU → Theme) wird weiße Schrift schwarz, Gelb und Wei
 
 ## Holdings
 
+**EAT im Hold-Feld:** Neben jedem Flieger im Hold-Feld steht die Expected Approach Time („EAT 14:32“). Zu dieser Zeit soll er den Holding-Fix verlassen, damit er in die nächste passende Lücke seiner Bahn passt, mit voller Staffelung zu Vorder- und Hintermann und unter Berücksichtigung von Sperren. Nie früher, als er ohnehin am Fix wäre.
+
+**Delay-Anweisung für CTR:** In der CTR-Ansicht steht neben den Balken ein Vorschlag, wie das Delay bis zum IAF abgebaut werden kann:
+- zuerst über die Geschwindigkeit, oberhalb FL245 als Mach (z. B. „M.76“), darunter als IAS (z. B. „250kt“, nicht unter 250 kt über FL100 bzw. 220 kt darunter),
+- was dann noch fehlt, als Umweg oder Vektoren („+3min“),
+- ab 8 Minuten Rest „HOLD“.
+
+Das ist ein Vorschlag aus Restflugzeit und Geschwindigkeit, Wind ist grob berücksichtigt. Jeder Lotse kann ihn im MENU unter „CTR delay advice“ ein- oder ausblenden.
+
+
 APP-Holdings (in `web/eddm.json` unter `holdings`): ROKIL 126 R, LANDU 213 L, NAPSA 273 L, BETOS 067 R (Inbound-Kurs und Kurvenrichtung). OTT und MIQ werden nicht geplant. In der Simulation fliegen Flieger, deren Delay sich auf dem Downwind nicht mehr aufnehmen lässt, dort echte Warteschleifen und verlassen sie am Fix, sobald das Rest-Delay passt.
 
 ## Downwind und Final
