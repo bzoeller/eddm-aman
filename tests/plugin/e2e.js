@@ -18,6 +18,8 @@ let p;
   const api = await (await fetch('http://127.0.0.1:8471/api/traffic')).json();
   ok(api.version === 1 && api.aircraft.length > 20 && api.me.callsign === 'EDDM_N_APP', '/api/traffic liefert ' + api.aircraft.length + ' Flieger, ich bin ' + api.me.callsign);
   ok(api.aircraft.every(a => typeof a.lat === 'number' && a.cs && a.star), 'Datensaetze vollstaendig (Position, Callsign, STAR)');
+  const fa = api.aircraft.find(a => a.asgSpd);
+  ok(fa && fa.asgSpd === 280 && fa.spdMod === '+', 'zugewiesene Geschwindigkeit und TopSky-Zusatz werden gelesen: ' + (fa ? fa.cs + ' ' + fa.asgSpd + fa.spdMod : 'keiner'));
   const hf = api.aircraft.find(a => a.holding);
   ok(hf && /^(ROKIL|LANDU|BETOS|NAPSA)$/.test(hf.holding), 'TopSky-Holding (Strip-Annotation h/FIX/h) wird gelesen: ' + (hf ? hf.cs + ' haelt bei ' + hf.holding : 'keiner'));
   // rohe Anfrage, damit ".." wirklich beim Server ankommt (fetch wuerde den Pfad normalisieren)

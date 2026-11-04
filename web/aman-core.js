@@ -370,6 +370,21 @@
     return text;
   }
 
+  /** Schallgeschwindigkeit (kt) in der Hoehe (ISA, ab 36089 ft konstant). */
+  const soundKt = alt => 661.5 * Math.sqrt((288.15 - 0.0019812 * Math.min(Math.max(alt || 0, 0), 36089)) / 288.15);
+  /**
+   * Zugewiesene Geschwindigkeit aus EuroScope als TAS (kt): asgMach (x100) oberhalb FL245, sonst asgSpd (IAS).
+   * Liefert { tas, mod } oder null. mod: '+' oder mehr, '-' oder weniger, '' genau.
+   */
+  function assignedTas(ac) {
+    const alt = ac.alt || 0, mod = ac.spdMod === '+' || ac.spdMod === '-' ? ac.spdMod : '';
+    if (ac.asgMach > 30 && ac.asgMach < 100 && alt >= 24500) return { tas: ac.asgMach / 100 * soundKt(alt), mod };
+    if (ac.asgSpd > 100 && ac.asgSpd < 400) return { tas: tasFromIas(ac.asgSpd, alt), mod };
+    return null;
+  }
+  /** Geschwindigkeit nach Zusatz begrenzen: '+' = mindestens, '-' = hoechstens, sonst genau. */
+  const applyMod = (cur, asg, mod) => (mod === '+' ? Math.max(cur, asg) : mod === '-' ? Math.min(cur, asg) : asg);
+
   /** Pflichtwerte der Config pruefen: Standardwerte stehen nur in eddm.json, nicht im Code. */
   const REQUIRED = {
     defaults: ['spacingNm', 'ratePerRwy', 'timelineMin', 'captureNm', 'hysteresisSec', 'ctrMaxDelayMin', 'fixedFinalGs', 'bentLineBelowMin',
@@ -542,6 +557,14 @@
         const extra = pr.cross > 1 ? pr.cross : 0;
         const gs = ac.gs > 60 ? ac.gs : 200;
         let t = ttgAt(ttg, pr.s) + extra / gs * 3600, rem = along + extra;
+        // zugewiesene IAS bis zum Final (z. B. 250 auf dem Downwind statt 220): Zeit bis zum Final im Verhaeltnis kuerzer/laenger
+        const sF = path.length - cfg.profile.finalNm;
+        if (ac.asgSpd > 140 && ac.asgSpd < 400 && pr.s < sF) {
+          const prof = cfg.profile.downwind, mod = ac.spdMod;
+          const ias = mod === '+' ? Math.max(prof, ac.asgSpd) : mod === '-' ? Math.min(prof, ac.asgSpd) : ac.asgSpd;
+          const tb = ttgAt(ttg, pr.s) - ttgAt(ttg, sF);
+          t += tb * (Math.max(0.6, Math.min(1.5, prof / ias)) - 1);
+        }
         // auf der Anfluglinie (auch vor FAP15, z. B. nach Heading direkt aufs verlaengerte Final)
         const rF = onFinalOf(path, p, ac, a);
         if (rF != null) { const tF = finalTime(path, ttg, rF); if (tF < t + 30 || rF > cfg.profile.finalNm) { t = tF; rem = rF; } }
@@ -583,7 +606,22 @@
         const trk = trackDeg(p, path.pts[0]);
         gs = Math.max(150, tasFromIas(cfg.profile.belowFL100, Math.max(ac.alt || 8000, 4000)) - headwind(trk, winds.aloft));
       }
-      const tIaf = dIaf / gs * 3600;
+      // zugewiesene Geschwindigkeit oder Mach aus EuroScope bis zum IAF (mit TopSky-Zusatz + / -). Grundlage bleibt die
+      // gemessene Groundspeed: die ersten 90 s nach der Zuweisung (Umstellen) zaehlt sie, danach das Ziel; haelt sich der
+      // Pilot 2 min nach der Zuweisung nicht daran (mehr als 15 kt daneben), zaehlt nur die gemessene.
+      const asg = assignedTas(ac);
+      let tIaf = dIaf / gs * 3600;
+      const key = asg ? (ac.asgSpd || 0) + '/' + (ac.asgMach || 0) + (asg.mod || '') : null;
+      if (key !== a.asgKey) { a.asgKey = key; a.asgAt = now; }
+      if (asg) {
+        const target = Math.max(120, applyMod(gs, asg.tas - headwind(trackDeg(p, path.pts[0]), winds.aloft), asg.mod));
+        const age = now - (a.asgAt || now);
+        const ignored = age > 120 && ac.gs > 120 && Math.abs(ac.gs - target) > 15;
+        if (!ignored && Math.abs(target - gs) > 1) {
+          const t1 = Math.max(0, 90 - age), d1 = Math.min(dIaf, gs * t1 / 3600);
+          tIaf = d1 / gs * 3600 + (dIaf - d1) / target * 3600;
+        }
+      }
       return etaResult(path, ttg, now, tIaf + ttg[0], dIaf + effRemaining(cfg, path, 0), { etaIaf: now + tIaf, passedIaf: false });
     }
 
@@ -690,12 +728,17 @@
 
     /** IAF und Einflugstrom eines Fliegers bestimmen. */
     function assignIafStream(ac, a, p) {
-      // IAF: vom Plugin, sonst aus dem STAR-Namen (z. B. BETOS1A) oder der Route, sonst der naechste
-      let iafIn = ac.iaf && cfg.iafs[ac.iaf] ? ac.iaf : null;
-      if (!iafIn && typeof ac.star === 'string') iafIn = Object.keys(cfg.iafs).find(k => ac.star.toUpperCase().indexOf(k) === 0) || null;
+      // IAF: aus dem STAR-Namen (z. B. BETOS1A), sonst vom Plugin, sonst aus der Route, sonst der naechste
+      const fromStar = typeof ac.star === 'string' ? Object.keys(cfg.iafs).find(k => ac.star.toUpperCase().indexOf(k) === 0) || null : null;
+      let iafIn = fromStar || (ac.iaf && cfg.iafs[ac.iaf] ? ac.iaf : null);
       // Route: der IAF selbst oder eine STAR wie ROKIL2A (so steht es oft im VATSIM-Flugplan)
       if (!iafIn && typeof ac.route === 'string') { const tk = ac.route.toUpperCase().split(/[\s.\/]+/); iafIn = Object.keys(cfg.iafs).find(k => tk.some(t => t === k || (t.indexOf(k) === 0 && /^\d[A-Z]$/.test(t.slice(k.length))))) || null; }
-      const iaf = iafIn || a.iaf || nearestIaf(p);
+      // Nahe am IAF (40 NM) oder schon vorbei: IAF bleibt fest, nur eine neue STAR aendert ihn. Sonst koennte ein
+      // Direct, der eine andere Transition kreuzt, den Flieger kurz auf deren Strecke springen lassen (Fall DLH4EE).
+      const fixed = a.iaf && cfg.iafs[a.iaf] && (a.passedIaf || dist(p, iafXY[a.iaf]) < 40);
+      const starChanged = fromStar && fromStar !== a.starIaf && fromStar !== a.iaf;   // neue STAR ueber einen anderen IAF
+      const iaf = fixed && !starChanged ? a.iaf : (iafIn || a.iaf || nearestIaf(p));
+      if (fromStar) a.starIaf = fromStar;
       a.iaf = iaf;
       // Einflugstrom (z. B. DISUN T103 BETOS oder SOTOV T101 BETOS): zuerst aus der Flugplanroute,
       // sonst aus der Peilung vom IAF (festgehalten, sobald der Flieger naeher als 40 NM ist)
@@ -1131,7 +1174,7 @@
 
   return {
     createEngine, sanitizeState, downwindPaths, streamByRoute, roleFor, ctrSector, parseMetarWind, makeProjection, preparePaths, pointAt,
-    planToKeys, keysToPlan, diffKeys, delayAdvice,
+    planToKeys, keysToPlan, diffKeys, delayAdvice, assignedTas,
     // gemeinsam mit der Simulation
     headwind, tasFromIas, trackDeg, angDiff, altAt, profileIas, vappFor, rayHit, rayHits, finalGeo, finalCross
   };

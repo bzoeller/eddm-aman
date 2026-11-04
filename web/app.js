@@ -773,12 +773,23 @@
   function renderStats(side) {
     const s = engine.stats(side);
     const f1 = n => n.toFixed(1);
+    const rw = side === 'N' ? 'North' : 'South';
+    // Tooltips erklaeren jedes Feld (Maus darueber halten)
+    const T = {
+      flw: 'FLW (flow): arrivals planned to land on ' + rw + ' in the next 60 min (planned times incl. delay)',
+      dem: 'DEM (demand): arrivals that could land on ' + rw + ' in the next 60 min without delay (ETAs). DEM above FLW: more traffic than the runway takes, the difference becomes delay',
+      cnt: 'CNT (count): landings on ' + rw + ' counted since this AMAN was opened',
+      win: m => 'Time window: the last ' + m + ' minutes',
+      lnd: m => 'LND: landings on ' + rw + ' in the last ' + m + ' minutes',
+      sep: m => 'SEP: average spacing between consecutive landings in the last ' + m + ' minutes in NM (time gap x ' + cfg.defaults.fixedFinalGs + ' kt, an estimate; 0.0 = fewer than 2 landings)'
+    };
+    const td = (v, t) => '<td title="' + esc(t) + '">' + v + '</td>';
     $('stats' + side).innerHTML =
-      '<table aria-label="Statistics ' + (side === 'N' ? 'North' : 'South') + '"><tr><th>' + side + '</th><th>FLW</th><th>DEM</th><th>CNT</th></tr>' +
-      '<tr><td></td><td>' + s.flw + '</td><td>' + s.dem + '</td><td>' + s.cnt + '</td></tr>' +
-      '<tr><td class="k">' + side + '</td>' + s.win.map(w => '<td>' + w.min + '</td>').join('') + '</tr>' +
-      '<tr><td class="k">LND</td>' + s.win.map(w => '<td>' + w.lnd + '</td>').join('') + '</tr>' +
-      '<tr><td class="k">SEP</td>' + s.win.map(w => '<td>' + f1(w.sep) + '</td>').join('') + '</tr></table>';
+      '<table aria-label="Statistics ' + rw + '"><tr><th>' + side + '</th><th title="' + esc(T.flw) + '">FLW</th><th title="' + esc(T.dem) + '">DEM</th><th title="' + esc(T.cnt) + '">CNT</th></tr>' +
+      '<tr><td></td>' + td(s.flw, T.flw) + td(s.dem, T.dem) + td(s.cnt, T.cnt) + '</tr>' +
+      '<tr><td class="k">' + side + '</td>' + s.win.map(w => td(w.min, T.win(w.min))).join('') + '</tr>' +
+      '<tr><td class="k" title="Landings">LND</td>' + s.win.map(w => td(w.lnd, T.lnd(w.min))).join('') + '</tr>' +
+      '<tr><td class="k" title="Average spacing in NM">SEP</td>' + s.win.map(w => td(f1(w.sep), T.sep(w.min))).join('') + '</tr></table>';
   }
 
   function renderStatus() {

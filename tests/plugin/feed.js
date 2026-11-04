@@ -27,9 +27,12 @@ setInterval(() => {
   // bekommen Strip-Annotation 6 "h/<IAF>/h"
   const tr = sim.traffic().aircraft;
   const fixed = tr.filter(a => a.passedIaf).map(a => a.cs).sort()[0];
+  const fastCs = tr.filter(a => !a.passedIaf).map(a => a.cs).sort()[0];
   for (const a of tr) {
     const hold = a.inHold || a.cs === fixed ? 'h/' + a.iaf + '/h' : '';
-    lines.push([a.cs, a.type, a.wtc, a.lat.toFixed(5), a.lon.toFixed(5), a.alt, a.gs, Math.round(a.hdg || 0), a.route + ' ' + a.iaf, star[a.iaf], a.arrRwy || '', 'EDDM', (!a.passedIaf && track[a.iaf]) || '', '', hold].join('\t'));
+    // zugewiesene Geschwindigkeit nachbilden: der erste noch vor dem IAF nach Callsign hat 280 kt "oder mehr"
+    const spd = a.cs === fastCs ? ['280', '', '/s+/'] : ['', '', ''];
+    lines.push([a.cs, a.type, a.wtc, a.lat.toFixed(5), a.lon.toFixed(5), a.alt, a.gs, Math.round(a.hdg || 0), a.route + ' ' + a.iaf, star[a.iaf], a.arrRwy || '', 'EDDM', (!a.passedIaf && track[a.iaf]) || '', '', hold].concat(spd).join('\t'));
   }
   fs.writeFileSync(file + '.tmp', lines.join('\n')); fs.renameSync(file + '.tmp', file);
 }, 1000);

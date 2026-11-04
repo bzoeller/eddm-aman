@@ -33,6 +33,9 @@ static void load(const std::string& file) {
         if (c.size() > 12) t.trackedBy = c[12];
         if (c.size() > 13) t.direct = c[13];
         if (c.size() > 14) t.annotation = c[14];   // Strip-Annotation 6 (TopSky-Holding "h/FIX/h")
+        if (c.size() > 15 && !c[15].empty()) t.asgSpd = std::stoi(c[15]);
+        if (c.size() > 16 && !c[16].empty()) t.asgMach = std::stoi(c[16]);
+        if (c.size() > 17) t.annotation7 = c[17];  // Strip-Annotation 7 (TopSky "/s+/")
         v.push_back(t);
     }
     world().targets = v;

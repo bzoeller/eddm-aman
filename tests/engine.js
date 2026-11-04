@@ -199,5 +199,38 @@ for (const D of ['26', '08']) {
   ok(b2 < m[0] - 10 && Math.round(b1) === m[0], 'frueher Base-Turn: erst nach dem zweiten Update als Abkuerzung (' + Math.round(b1) + ' -> ' + Math.round(b2) + ' NM)');
 }
 
+// 12) NAPSA-Flieger fuer 08R auf einem Direct kreuzt die BETOS-Transition (Fall DLH4EE): EuroScope meldet kurz BETOS als IAF
+//     -> IAF bleibt NAPSA, die Meilen springen nicht
+{
+  const e = Core.createEngine(cfg, { dir: '08' }), P = e.paths.NAPSA['08R'];
+  const q = Core.pointAt(P, P.cum[2] + 3), ll = e.proj.ll(q.x, q.y);
+  const mk = iaf => Object.assign({ cs: 'DLH4EE', type: 'A320', wtc: 'M', alt: 8000, gs: 240, trk: q.trk, hdg: q.trk, iaf, star: '', route: 'AMADI Q113 NAPSA', passedIaf: true }, ll);
+  const m = ['NAPSA', 'BETOS', 'NAPSA'].map((iaf, k) => e.update({ aircraft: [mk(iaf)] }, T0 + 5 * k, {}).byCs.DLH4EE);
+  ok(m.every(i => i.iaf === 'NAPSA') && Math.abs(m[1].remainingNm - m[0].remainingNm) < 1, 'IAF bleibt NAPSA, Meilen ' + m.map(i => i.remainingNm.toFixed(0)).join(' '));
+  const st = e.update({ aircraft: [Object.assign(mk('BETOS'), { star: 'BETOS1B' })] }, T0 + 20, {}).byCs.DLH4EE;
+  ok(st.iaf === 'BETOS', 'neue STAR ueber BETOS aendert den IAF');
+}
+
+// 13) Zugewiesene Geschwindigkeit aus EuroScope (mit TopSky-Zusatz): vor dem IAF bis zum Fix, hinter dem IAF bis zum Final
+{
+  const e = Core.createEngine(cfg, { dir: '26' }), P = e.proj, I = P.xy(cfg.iafs.ROKIL.lat, cfg.iafs.ROKIL.lon);
+  const ll = P.ll(I.x - 60, I.y + 10);
+  const base = { type: 'A320', wtc: 'M', alt: 35000, gs: 470, trk: 100, hdg: 100, iaf: 'ROKIL' };
+  const L = e.update({ aircraft: [
+    Object.assign({ cs: 'NOASG' }, base, ll), Object.assign({ cs: 'M76' }, base, ll, { asgMach: 76 }),
+    Object.assign({ cs: 'M90P' }, base, ll, { asgMach: 90, spdMod: '+' }), Object.assign({ cs: 'M70P' }, base, ll, { asgMach: 70, spdMod: '+' })] }, T0, {});
+  const d = cs => Math.round(L.byCs[cs].etaIaf - L.byCs.NOASG.etaIaf);
+  ok(d('M76') > 20, 'M.76 zugewiesen: spaeter am IAF als mit 470 kt, erst nach 90 s Umstellen (+' + d('M76') + ' s)');
+  ok(d('M90P') < -10 && Math.abs(d('M70P')) < 2, 'M.90+ beschleunigt, M.70+ bremst nicht (' + d('M90P') + ' / ' + d('M70P') + ' s)');
+  // Pilot haelt sich nicht daran: 3 min nach der Zuweisung M.76 fliegt er weiter 470 kt -> gemessene Groundspeed zaehlt
+  let L3;
+  for (let k = 0; k <= 36; k++) L3 = e.update({ aircraft: [Object.assign({ cs: 'NOASG' }, base, ll), Object.assign({ cs: 'M76' }, base, ll, { asgMach: 76 })] }, T0 + 5 * k, {});
+  ok(Math.abs(L3.byCs.M76.etaIaf - L3.byCs.NOASG.etaIaf) < 2, 'Pilot fliegt die zugewiesene Mach nicht: gemessene Groundspeed zaehlt');
+  const e2 = Core.createEngine(cfg, { dir: '26' }), Q = e2.paths.ROKIL['26R'], q = Core.pointAt(Q, Q.cum[2] + 1), l2 = e2.proj.ll(q.x, q.y);
+  const b2 = { type: 'A320', wtc: 'M', alt: 7000, gs: 230, trk: q.trk, hdg: q.trk, iaf: 'ROKIL', passedIaf: true };
+  const L2 = e2.update({ aircraft: [Object.assign({ cs: 'DW' }, b2, l2), Object.assign({ cs: 'DW250' }, b2, l2, { asgSpd: 250 })] }, T0, {});
+  ok(L2.byCs.DW250.eta < L2.byCs.DW.eta - 30, '250 kt auf dem Downwind statt 220: frueher (' + Math.round(L2.byCs.DW.eta - L2.byCs.DW250.eta) + ' s)');
+}
+
 console.log(fails ? fails + ' Fehler' : 'alles gruen');
 process.exit(fails ? 1 : 0);

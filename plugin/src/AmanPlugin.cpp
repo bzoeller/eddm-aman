@@ -38,6 +38,13 @@ double distNm(double lat1, double lon1, double lat2, double lon2) {
     return 3440.065 * 2 * std::atan2(std::sqrt(a), std::sqrt(1 - a));
 }
 
+/** TopSky ergaenzt eine zugewiesene Geschwindigkeit in einer Strip-Annotation: "/s+/" = oder mehr, "/s-/" = oder weniger. */
+char topSkySpeedMod(const std::string& a) {
+    size_t i = a.find("/s");
+    if (i == std::string::npos || i + 3 >= a.size() || a[i + 3] != '/') return 0;
+    return (a[i + 2] == '+' || a[i + 2] == '-') ? a[i + 2] : 0;
+}
+
 /** TopSky legt ein Holding als Strip-Annotation "h/<Fix>/h" ab (gesehen in Annotation 6). Liefert den Fix oder "". */
 std::string topSkyHolding(const std::string& a) {
     if (a.size() < 5 || (a[0] != 'h' && a[0] != 'H') || a[1] != '/') return "";
@@ -228,24 +235,32 @@ void CAmanPlugin::BuildSnapshot() {
         // Direct, den ein Lotse in EuroScope gegeben hat (z. B. DM423): der AMAN rechnet direkt bis dorthin
         a.direct = upper(fp.GetControllerAssignedData().GetDirectToPointName());
         // Holding aus TopSky (Strip-Annotation "h/NAPSA/h"); ohne TopSky erkennt der AMAN es am Flugweg
-        for (int i = 0; i < 9 && a.holding.empty(); i++) {
-            const char* an = fp.GetControllerAssignedData().GetFlightStripAnnotation(i);
-            a.holding = topSkyHolding(an ? an : "");
+        CFlightPlanControllerAssignedData ad = fp.GetControllerAssignedData();
+        for (int i = 0; i < 9; i++) {
+            const char* an = ad.GetFlightStripAnnotation(i);
+            std::string s = an ? an : "";
+            if (a.holding.empty()) a.holding = topSkyHolding(s);
+            if (!a.spdMod) a.spdMod = topSkySpeedMod(s);
         }
+        // zugewiesene Geschwindigkeit (IAS in kt) oder Mach (x100, z. B. 80 = M.80)
+        a.asgSpd = ad.GetAssignedSpeed();
+        a.asgMach = ad.GetAssignedMach();
 
-        // IAF aus der berechneten Route; "passiert" nur melden, wenn EuroScope den Punkt als ueberflogen fuehrt
+        // IAF: zuerst aus der STAR (z. B. NAPSA1A), sonst der erste IAF der berechneten Route. Die STAR hat Vorrang,
+        // weil sich die berechnete Route nach einem Direct aendert und dann ein anderer IAF hineinrutschen kann.
+        for (const char* iaf : kIafs)
+            if (a.star.rfind(iaf, 0) == 0) a.iaf = iaf;
         CFlightPlanExtractedRoute er = fp.GetExtractedRoute();
         for (int i = 0; i < er.GetPointsNumber(); i++) {
             std::string n = upper(er.GetPointName(i));
             for (const char* iaf : kIafs) {
-                if (n != iaf) continue;
+                if (n != iaf || (!a.iaf.empty() && a.iaf != iaf)) continue;
                 a.iaf = iaf;
-                if (er.GetPointDistanceInMinutes(i) < 0) a.passedIaf = 1;  // laut SDK: -1 = bereits ueberflogen
+                // "passiert" nur melden, wenn EuroScope den Punkt als ueberflogen fuehrt (laut SDK: -1)
+                if (er.GetPointDistanceInMinutes(i) < 0) a.passedIaf = 1;
             }
+            if (!a.iaf.empty() && n == a.iaf) break;
         }
-        if (a.iaf.empty())
-            for (const char* iaf : kIafs)
-                if (a.star.rfind(iaf, 0) == 0) a.iaf = iaf;          // z. B. BETOS1A
         s.aircraft.push_back(a);
     }
 

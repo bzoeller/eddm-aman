@@ -56,7 +56,8 @@
     const r4 = v => Math.round(v * 1e4) / 1e4;
     return (list || []).slice(0, max || 150).filter(a => a && typeof a.cs === 'string' && fin(a.lat) && fin(a.lon)).map(a => {
       const o = { cs: a.cs, lat: r4(a.lat), lon: r4(a.lon), alt: Math.round(a.alt || 0), gs: Math.round(a.gs || 0) };
-      for (const k of ['hdg', 'trk']) if (fin(a[k])) o[k] = Math.round(a[k]);
+      for (const k of ['hdg', 'trk', 'asgSpd', 'asgMach']) if (fin(a[k])) o[k] = Math.round(a[k]);
+      for (const k of ['direct', 'holding', 'spdMod']) if (typeof a[k] === 'string' && a[k]) o[k] = a[k].slice(0, 8);
       for (const k of ['type', 'wtc', 'star', 'iaf', 'arrRwy', 'trackedBy', 'stream']) if (typeof a[k] === 'string' && a[k]) o[k] = a[k].slice(0, 16);
       if (typeof a.route === 'string' && a.route) o.route = a.route.slice(-200);
       if (a.passedIaf) o.passedIaf = true;

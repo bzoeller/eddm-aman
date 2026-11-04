@@ -73,6 +73,11 @@ In der hellen Version (MENU → Theme) wird weiße Schrift schwarz, Gelb und Wei
   - Bis dorthin zählt der direkte Weg nach Kurs (sonst der kürzeste Weg) zum Eintrittspunkt auf dem neuen Downwind. Base und Final sind als Eintritt ausgeschlossen.
   - Ab Erreichen des neuen Downwinds gilt das Standardprofil von dort.
 - **Per Heading geführt, ohne den IAF zu überfliegen:** Zeigt der Kurs eines Fliegers im Anflugbereich (unter 45 NM vom Platz, unter FL160) mehr als 3 NM am IAF vorbei auf einen späteren Teil des Pfades (Downwind, Base, Final), gilt er sofort als von APP geführt. Das AMAN rechnet dann direkt bis zum Schnittpunkt und ab dort mit dem Standardprofil, wenn das mindestens 1 min spart (`vectorAreaNm`, `vectorMaxAltFt`, `vectorMissNm`).
+- **Zugewiesene Geschwindigkeit aus EuroScope:** Speed (IAS) oder Mach, die ein Lotse in EuroScope zuweist, fließen in die Planung ein, mit dem TopSky-Zusatz „+“ (oder mehr) und „-“ (oder weniger).
+  - Vor dem IAF gilt die Geschwindigkeit bis zum Fix, hinter dem IAF bis zum 15-NM-Final.
+  - Grundlage bleibt die gemessene Groundspeed. In den ersten 90 Sekunden nach der Zuweisung zählt sie weiter, so lange stellt der Pilot um.
+  - Weicht er 2 Minuten nach der Zuweisung noch um mehr als 15 kt ab, zählt nur die gemessene.
+- **IAF bleibt fest:** Ist ein Flieger seinem IAF näher als 40 NM oder schon vorbei, behält er seinen IAF, auch wenn er per Direct eine andere Transition kreuzt. Nur eine neue STAR ändert ihn.
 - **Direct aus EuroScope:** Gibt ein Lotse in EuroScope ein Direct auf einen Punkt des Anflugpfades (z. B. DM425 oder die Schwelle), rechnet das AMAN sofort direkt bis dorthin und ab dort mit dem Standardprofil. Ein Direct auf einen schon überflogenen Punkt wird ignoriert.
 - **Final erst ab 7000 ft:** Ein Flieger gilt erst ab 7000 ft oder darunter als auf dem Final (`profile.finalMaxAltFt`). Wer höher die Anfluglinie kreuzt, wird nicht aufs Final gerechnet.
 

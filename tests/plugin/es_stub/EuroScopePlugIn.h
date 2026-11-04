@@ -15,7 +15,8 @@ const int COMPATIBILITY_CODE = 16;
 const int SECTOR_ELEMENT_RUNWAY = 4;
 
 struct FakeTarget {
-    std::string cs, type, dest = "EDDM", route, star, arrRwy, trackedBy, direct, scratch = "HOLD", annotation;
+    std::string cs, type, dest = "EDDM", route, star, arrRwy, trackedBy, direct, scratch = "HOLD", annotation, annotation7;
+    int asgSpd = 0, asgMach = 0;
     char wtc = 'M';
     double lat = 0, lon = 0, trk = 0;
     int alt = 0, gs = 0, hdg = 0;
@@ -68,10 +69,10 @@ public:
     explicit CFlightPlanControllerAssignedData(const FakeTarget* t) : t_(t) {}
     const char* GetDirectToPointName() { return t_->direct.c_str(); }
     const char* GetScratchPadString() { return t_->scratch.c_str(); }
-    const char* GetFlightStripAnnotation(int i) { return i == 6 ? t_->annotation.c_str() : ""; }
+    const char* GetFlightStripAnnotation(int i) { return i == 6 ? t_->annotation.c_str() : i == 7 ? t_->annotation7.c_str() : ""; }
     int GetAssignedHeading() { return 0; }
-    int GetAssignedSpeed() { return 0; }
-    int GetAssignedMach() { return 0; }
+    int GetAssignedSpeed() { return t_->asgSpd; }
+    int GetAssignedMach() { return t_->asgMach; }
     int GetClearedAltitude() { return 0; }
 };
 
