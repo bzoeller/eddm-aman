@@ -26,7 +26,8 @@
   --bar: #2b2d2f; --bar-thumb: #8a8d90; --title-fg: #3a3c3e; --vbar: #1c1d1f; --vbar-thumb: #3a3c3e;
   --menu-bg: #000; --disabled: #55585b; --sheet-bg: #0b0c0d; --rwyc: #3fe06b; --err: #ff6a5e;
   --font-ui: Arial, Helvetica, "Liberation Sans", sans-serif;
-  --font-mono: "Lucida Console", "DejaVu Sans Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  /* Consolas vor Lucida Console: dort sind Ziffern hoeher als Grossbuchstaben (Callsigns sahen ungleich aus) */
+  --font-mono: Consolas, "DejaVu Sans Mono", "Liberation Mono", Menlo, "Lucida Console", monospace;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; } }

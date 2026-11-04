@@ -164,5 +164,19 @@ for (const D of ['26', '08']) {
   ok(h.eat >= h.etaIaf - 1 && gapOk, c.cs + ' im Holding: EAT ' + Math.round((h.eat - sim.sim.t) / 60) + ' min, Landung in einer Luecke (mind. 60 s zu jedem anderen)');
 }
 
+// 10) Direct aus EuroScope: Lotse gibt "direct DM425" auf dem Downwind -> Rechnung direkt dorthin, dann Standardprofil
+{
+  const e = Core.createEngine(cfg, { dir: '26' });
+  const P = e.paths.ROKIL['26R'], i0 = P.pts.findIndex(q => q.name === 'DM422'), iD = P.pts.findIndex(q => q.name === 'DM425');
+  const q = Core.pointAt(P, P.cum[i0] + 0.5), ll = e.proj.ll(q.x, q.y);
+  const trkTo = (Math.atan2(P.pts[iD].x - q.x, P.pts[iD].y - q.y) * 180 / Math.PI + 360) % 360;
+  const mk = (cs, direct, trk) => Object.assign({ cs, type: 'A320', wtc: 'M', alt: 9000, gs: 250, trk, hdg: trk, iaf: 'ROKIL', passedIaf: true, direct }, ll);
+  const L = e.update({ aircraft: [mk('NODCT', '', q.trk), mk('DCT1', 'DM425', trkTo), mk('DCTOLD', 'DM421', q.trk)] }, T0, {});
+  const d = Math.hypot(P.pts[iD].x - q.x, P.pts[iD].y - q.y);
+  ok(L.byCs.DCT1.eta < L.byCs.NODCT.eta - 20 && L.byCs.DCT1.direct === 'DM425', 'direct DM425: frueher geplant (' + Math.round(L.byCs.NODCT.eta - L.byCs.DCT1.eta) + ' s)');
+  ok(L.byCs.DCT1.remainingNm < L.byCs.NODCT.remainingNm && L.byCs.DCT1.remainingNm > d, 'Restweg direkt bis DM425 plus Standardpfad (' + L.byCs.DCT1.remainingNm.toFixed(0) + ' statt ' + L.byCs.NODCT.remainingNm.toFixed(0) + ' NM)');
+  ok(!L.byCs.DCTOLD.direct, 'Direct auf einen schon ueberflogenen Punkt wird ignoriert');
+}
+
 console.log(fails ? fails + ' Fehler' : 'alles gruen');
 process.exit(fails ? 1 : 0);

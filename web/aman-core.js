@@ -497,11 +497,32 @@
         tFinal: ttgAt(ttg, Math.max(0, path.length - cfg.profile.finalNm)) }, extra);
     }
 
+    /**
+     * Direct aus EuroScope (Lotse hat "direct to" auf einen Punkt des Anflugpfades gegeben, z. B. DM423 oder die Schwelle):
+     * Rechnung direkt bis zu diesem Punkt, ab dort Standardprofil. Nur solange der Punkt vor dem Flieger liegt
+     * (EuroScope behaelt den Direct auch nach dem Ueberfliegen). Liefert { t, rem, k } oder null.
+     */
+    function directTo(ac, a, path, p, ttg) {
+      if (typeof ac.direct !== 'string' || !ac.direct) return null;
+      const name = ac.direct.toUpperCase().replace(/^RW(?=\d\d)/, 'THR');
+      const k = path.pts.findIndex((q, i) => i > 0 && (q.name === name || (q.name === 'THR' + name)));
+      if (k < 1) return null;
+      const P = path.pts[k], sK = path.cum[k], d = dist(p, P);
+      const pr = project(path, p, a.sMin || 0);
+      if (pr.s >= sK - 0.5 || d < 0.3) return null;                                // schon dort oder vorbei
+      if (a.trk != null && angDiff(a.trk, trackDeg(p, P)) > 90) return null;      // fliegt nicht (mehr) hin
+      const gs = ac.gs > 60 ? ac.gs : 220;
+      return { t: d / gs * 3600 + ttgAt(ttg, sK), rem: d + effRemaining(cfg, path, sK), k };
+    }
+
     function computeEta(ac, a, path, now, winds) {
       const p = proj.xy(ac.lat, ac.lon);
       const vapp = vappFor(cfg, ac);
       const ttg = timeTable(cfg, path, vapp, winds);
       const toIafDirect = dist(p, path.pts[0]);
+      // Direct auf einen Punkt hinter dem IAF: der Flieger kuerzt ab, ab dort Standardprofil
+      const dct = directTo(ac, a, path, p, ttg);
+      if (dct) return etaResult(path, ttg, now, dct.t, dct.rem, { sNew: a.sMin || 0, direct: path.pts[dct.k].name });
       let passed = !!a.passedIaf || ac.passedIaf === true;
       let pr = null;
       // Heuristik nur, wenn EuroScope keine Routeninfo liefert
@@ -875,7 +896,7 @@
           cs: ac.cs, type: ac.type || '', wtc: ac.wtc || 'M', iaf, stream: a.stream, side,
           dir: acDir, rwy: rwyId(side, acDir), tFinal: r.tFinal, eta: r.eta, etaIaf: r.etaIaf, tIafToThr: r.tIafToThr,
           remainingNm: r.remainingNm, passedIaf: r.passedIaf, hold: !!a.hold,
-          locked: !!a.locked, alt: ac.alt, gs: ac.gs,
+          locked: !!a.locked, alt: ac.alt, gs: ac.gs, direct: r.direct || null,
           trackedBy: typeof ac.trackedBy === 'string' && ac.trackedBy ? ac.trackedBy.toUpperCase() : null
         });
       }
