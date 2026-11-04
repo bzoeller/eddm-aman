@@ -22,4 +22,4 @@ sleep 6
 node "$ROOT/tests/plugin/e2e.js" "$WORK/traffic.txt" "$HAR" "$OUT"
 echo "--- EuroScope-Meldungen des Plugins:"; cat "$WORK/harness.log"
 # Diagnose-Befehl .aman dump: Scratchpad und Annotation des ersten Fliegers in der Nachrichtenzeile
-grep -q "dump .*scratchpad 'HOLD'" "$WORK/harness.log" && grep -q "annotation 0 'TEST'" "$WORK/harness.log" && echo "PASS .aman dump zeigt Scratchpad und Annotations" || { echo "FAIL .aman dump"; exit 1; }
+grep -q "dump .*scratchpad 'HOLD'" "$WORK/harness.log" && grep -q "annotation 6 'h/" "$WORK/harness.log" && echo "PASS .aman dump zeigt Scratchpad und Annotations" || { echo "FAIL .aman dump"; exit 1; }

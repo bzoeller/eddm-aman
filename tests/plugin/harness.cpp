@@ -11,7 +11,7 @@
 using EuroScopePlugIn::world;
 static volatile bool g_run = true;
 
-// Zeilenformat (Tab-getrennt): cs type wtc lat lon alt gs trk route star arrRwy dest [trackedBy] [direct]
+// Zeilenformat (Tab-getrennt): cs type wtc lat lon alt gs trk route star arrRwy dest [trackedBy] [direct] [annotation6]
 static void load(const std::string& file) {
     std::ifstream f(file);
     if (!f) return;
@@ -32,6 +32,7 @@ static void load(const std::string& file) {
         t.trk = std::stod(c[7]); t.hdg = static_cast<int>(t.trk); t.route = c[8]; t.star = c[9]; t.arrRwy = c[10]; t.dest = c[11];
         if (c.size() > 12) t.trackedBy = c[12];
         if (c.size() > 13) t.direct = c[13];
+        if (c.size() > 14) t.annotation = c[14];   // Strip-Annotation 6 (TopSky-Holding "h/FIX/h")
         v.push_back(t);
     }
     world().targets = v;
@@ -47,7 +48,11 @@ int main(int argc, char** argv) {
     for (int counter = 0; g_run; counter++) {
         load(argv[2]);
         // einmal den Diagnose-Befehl fuer den ersten Flieger (Test von .aman dump)
-        if (counter == 2 && !world().targets.empty()) p->OnCompileCommand((".aman dump " + world().targets[0].cs).c_str());
+        if (counter == 2 && !world().targets.empty()) {
+            std::string cs = world().targets[0].cs;
+            for (const auto& t : world().targets) if (!t.annotation.empty()) { cs = t.cs; break; }
+            p->OnCompileCommand((".aman dump " + cs).c_str());
+        }
         p->OnTimer(counter);
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }

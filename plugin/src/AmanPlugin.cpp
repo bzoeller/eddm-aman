@@ -38,6 +38,19 @@ double distNm(double lat1, double lon1, double lat2, double lon2) {
     return 3440.065 * 2 * std::atan2(std::sqrt(a), std::sqrt(1 - a));
 }
 
+/** TopSky legt ein Holding als Strip-Annotation "h/<Fix>/h" ab (gesehen in Annotation 6). Liefert den Fix oder "". */
+std::string topSkyHolding(const std::string& a) {
+    if (a.size() < 5 || (a[0] != 'h' && a[0] != 'H') || a[1] != '/') return "";
+    size_t e = a.find('/', 2);
+    if (e == std::string::npos || e == 2 || e - 2 > 8) return "";
+    std::string fix = a.substr(2, e - 2);
+    for (char& ch : fix) {
+        if (!std::isalnum(static_cast<unsigned char>(ch))) return "";
+        ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    }
+    return fix;
+}
+
 std::string upper(const char* s) {
     std::string o = s ? s : "";
     for (char& c : o) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
@@ -214,6 +227,11 @@ void CAmanPlugin::BuildSnapshot() {
         a.trackedBy = upper(fp.GetTrackingControllerCallsign());
         // Direct, den ein Lotse in EuroScope gegeben hat (z. B. DM423): der AMAN rechnet direkt bis dorthin
         a.direct = upper(fp.GetControllerAssignedData().GetDirectToPointName());
+        // Holding aus TopSky (Strip-Annotation "h/NAPSA/h"); ohne TopSky erkennt der AMAN es am Flugweg
+        for (int i = 0; i < 9 && a.holding.empty(); i++) {
+            const char* an = fp.GetControllerAssignedData().GetFlightStripAnnotation(i);
+            a.holding = topSkyHolding(an ? an : "");
+        }
 
         // IAF aus der berechneten Route; "passiert" nur melden, wenn EuroScope den Punkt als ueberflogen fuehrt
         CFlightPlanExtractedRoute er = fp.GetExtractedRoute();

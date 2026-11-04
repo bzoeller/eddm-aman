@@ -18,6 +18,8 @@ let p;
   const api = await (await fetch('http://127.0.0.1:8471/api/traffic')).json();
   ok(api.version === 1 && api.aircraft.length > 20 && api.me.callsign === 'EDDM_N_APP', '/api/traffic liefert ' + api.aircraft.length + ' Flieger, ich bin ' + api.me.callsign);
   ok(api.aircraft.every(a => typeof a.lat === 'number' && a.cs && a.star), 'Datensaetze vollstaendig (Position, Callsign, STAR)');
+  const hf = api.aircraft.find(a => a.holding);
+  ok(hf && /^(ROKIL|LANDU|BETOS|NAPSA)$/.test(hf.holding), 'TopSky-Holding (Strip-Annotation h/FIX/h) wird gelesen: ' + (hf ? hf.cs + ' haelt bei ' + hf.holding : 'keiner'));
   // rohe Anfrage, damit ".." wirklich beim Server ankommt (fetch wuerde den Pfad normalisieren)
   const raw = target => new Promise(res => {
     const sock = require('net').connect(8471, '127.0.0.1', () => sock.write('GET ' + target + ' HTTP/1.1\r\nHost: x\r\n\r\n'));
@@ -37,6 +39,7 @@ let p;
   ok(/EDDM_N_APP/.test(st) && /View APP/.test(st), 'Plugin-Modus, Rolle aus dem Callsign: ' + st.replace(/\n/g, ' | '));
   const nN = await p.$$eval('.col.N .label', l => l.length), nS = await p.$$eval('.col.S .label', l => l.length);
   ok(nN > 3 && nS > 3, 'Labels aus Plugindaten: Nord ' + nN + ', Sued ' + nS);
+  if (hf) ok(await until(async () => /^EAT \d\d$/.test(await p.$eval('.label[data-cs="' + hf.cs + '"] .mi', x => x.textContent))), hf.cs + ' im Holding: Label zeigt EAT statt Meilen');
   ok(!(await p.isVisible('#dirWarn')) && !(await p.isVisible('#stale')), 'keine Warnung bei passender Richtung und frischen Daten');
   ok(await p.evaluate(() => !document.querySelector('.clock').classList.contains('sim')), 'kein SIM-Kennzeichen im Plugin-Modus');
   await p.screenshot({ path: out + '/plugin-mode.png' });
