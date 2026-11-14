@@ -104,7 +104,7 @@ In der hellen Version (MENU → Theme) wird weiße Schrift schwarz, Gelb und Wei
 **Flieger im Holding:** Setzt ein Lotse den Flieger in TopSky ins Holding, erkennt der AMAN das sofort (TopSky legt es als Strip-Annotation `h/NAPSA/h` ab). Ohne TopSky erkennt er es am Flugweg: mehr als 300 Grad Kurve in dieselbe Richtung innerhalb von 6 Minuten, das dauert etwa 3 bis 4 Minuten. Der Flieger bleibt ganz normal in der Sequenz. Im Label steht statt der Meilen „EAT 56“ (Minute). Das ist die Expected Approach Time, also wann er den Holding-Fix verlassen muss, um seine geplante Landezeit zu treffen: jetzt plus das noch abzubauende Delay. Bei CTR steht die EAT vor den Balken. Fliegt er 3 Minuten ohne nennenswerte Kurve weiter, gilt er nicht mehr als im Holding.
 
 **Delay-Anweisung für CTR:** In der CTR-Ansicht steht neben den Balken ein Vorschlag, wie das Delay bis zum IAF abgebaut werden kann:
-- zuerst über die Geschwindigkeit, oberhalb FL245 als Mach (z. B. „M.76“), darunter als IAS (z. B. „250kt“, nicht unter 250 kt über FL100 bzw. 220 kt darunter),
+- zuerst über die Geschwindigkeit, ab FL280 als Mach (z. B. „M.76“), darunter nur als IAS in kt (z. B. „250kt“, nicht unter 250 kt über FL100 bzw. 220 kt darunter),
 - was dann noch fehlt, als Umweg oder Vektoren („+3min“),
 - ab 8 Minuten Rest „HOLD“.
 

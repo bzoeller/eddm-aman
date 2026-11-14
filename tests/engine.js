@@ -149,6 +149,7 @@ for (const D of ['26', '08']) {
   ok(/^M\.7\d$/.test(adv(60, 1200, 470, 35000)), '1 min auf 20 min in FL350: nur Mach (' + adv(60, 1200, 470, 35000) + ')');
   ok(/^250kt \+\dmin$/.test(adv(120, 720, 380, 20000)), '2 min auf 12 min in FL200: 250 kt und Umweg (' + adv(120, 720, 380, 20000) + ')');
   ok(adv(600, 1500, 470, 35000) === 'HOLD', '10 min Delay: Holding');
+  ok(/^\d{3}kt/.test(adv(60, 1200, 420, 26000)) && /^M\./.test(adv(60, 1200, 470, 28000)), 'unter FL280 nur kt (' + adv(60, 1200, 420, 26000) + '), ab FL280 Mach (' + adv(60, 1200, 470, 28000) + ')');
 }
 
 // 9) Holding am Flugweg erkannt (EuroScope bietet keine Holding-Liste): Flieger bleibt in der Sequenz,
