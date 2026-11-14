@@ -32,6 +32,12 @@ Die Reihenfolge richtet sich nach der Zeit, nicht nach den Meilen. Ein schneller
 
 **Überholen:** Hinter dem IAF ist die Reihenfolge stabil. Ein Flieger vor seinem IAF überholt einen Flieger hinter dem IAF nur, wenn er eindeutig früher ist, mehr als 2 Minuten (`overtakeSec`).
 
+## Sitzungs-Log
+
+Im EuroScope-Betrieb zeichnet der AMAN alle 5 Sekunden auf, was er gesehen und gerechnet hat: alle Flieger (Position, Höhe, Groundspeed, Route, IAF, Bahn, Direct, Speed, Holding), Wind, Login, Lotsenliste und den gemeinsamen Plan. Behalten werden die letzten etwa 4 Stunden, nur im Speicher dieses Fensters. Nach einem Neuladen beginnt die Aufzeichnung neu.
+
+Fällt dir etwas auf: MENU → **DOWNLOAD SESSION LOG** speichert eine Datei `aman-log-….jsonl.gz` (für 4 Stunden etwa 3 MB). Die Datei mit Uhrzeit und Callsigns weitergeben. Mit `node tools/replay.mjs <Datei> --at 17:58` oder `--cs KLM350,DLH3JA` wird die Lage mit dem aktuellen Rechenkern nachgespielt.
+
 ## Runway Change und Bahnsperre
 
 Beides stellt APP über einen Klick auf den RWY-Kasten ein. Alle Zeiten sind UTC und werden als `HH:MM` oder vierstellig (`1420`) eingegeben.

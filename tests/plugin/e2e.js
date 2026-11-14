@@ -186,6 +186,22 @@ let p;
     await pa.close(); await pt.close();
   }
 
+  // Sitzungs-Log: im MENU herunterladen und mit tools/replay.mjs auswerten
+  {
+    await p.click('#btnMenu');
+    ok(/Recording: \d+ h \d+ min, \d+ updates/.test(await p.textContent('#logInfo')), 'MENU zeigt die laufende Aufzeichnung: ' + (await p.textContent('#logInfo')));
+    const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#btnLog')]);
+    const logFile = out + '/' + dl.suggestedFilename();
+    await dl.saveAs(logFile);
+    await p.click('#btnClose');
+    const { execFileSync } = require('child_process');
+    const info = execFileSync(process.execPath, [require('path').join(__dirname, '..', '..', 'tools', 'replay.mjs'), logFile, '--info']).toString();
+    ok(/Datentakte/.test(info) && /EDDM_N_APP|EDMM_/.test(info), 'Log heruntergeladen (' + dl.suggestedFilename() + ') und auswertbar: ' + info.split('\n')[0]);
+    const lastT = info.match(/bis (\d\d:\d\d)/)[1];
+    const seq = execFileSync(process.execPath, [require('path').join(__dirname, '..', '..', 'tools', 'replay.mjs'), logFile, '--at', lastT]).toString();
+    ok(/--- Nord/.test(seq) && /ETA \d\d:\d\d:\d\d  STA/.test(seq), 'Nachspielen zeigt die Sequenz um ' + lastT);
+  }
+
   // Plugin faellt aus -> DATA STALE
   process.kill(+harnessPid, 'SIGTERM');
   await until(() => p.isVisible('#stale'), 40000);

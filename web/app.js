@@ -125,6 +125,7 @@
       if (my !== pollSeq) return;
       if (!d || typeof d !== 'object') throw new Error('empty response');
       me = d.me && typeof d.me === 'object' ? d.me : null;
+      pluginVersion = typeof d.pluginVersion === 'string' ? d.pluginVersion : null;
       metar = typeof d.metar === 'string' ? d.metar : null;
       online = Array.isArray(d.controllers) ? d.controllers.map(c => (c && c.callsign) || c).filter(c => typeof c === 'string') : null;
       const rw = Array.isArray(d.arrRwys) ? d.arrRwys.map(String) : [];
@@ -149,6 +150,7 @@
       lastData = tOk ? Math.min(Date.now(), d.time * 1000) : Date.now(); connErr = null;
       mergeTraffic();
       tick();
+      recordLog();
     }).catch(e => {
       if (my !== pollSeq) return;
       connErr = e && e.name === 'AbortError' ? 'Plugin not responding' : 'No connection to plugin (' + ((e && e.message) || 'error') + ')';
@@ -290,6 +292,55 @@
     if (s.waiting && s.pending) return { warn: true, text: 'SYNC: ' + s.pending + ' change(s) not shared yet. ' + s.waiting };
     const own = sideOwners();
     return { warn: false, text: 'SYNC online, auto order ' + (own.N || '-') + (s.by ? ', last change ' + s.by : '') };
+  }
+
+  // ---------- Sitzungs-Log (zum Nachspielen und Auswerten) ----------
+  // Je Datentakt eine Zeile: Zeitstempel, alle Flieger, wie der AMAN sie gerechnet hat (zusammengefuehrt aus
+  // EuroScope, anderen Lotsen und VATSIM), Wind, Login, Lotsenliste und - nur wenn geaendert - der Plan.
+  // Behalten werden etwa die letzten 4 Stunden (hoechstens 60 MB), alles nur im Speicher dieses Fensters.
+  const sessionLog = [];
+  let sessionLogBytes = 0, lastLoggedPlan = null, pluginVersion = null;
+  function recordLog() {
+    if (simApi) return;
+    try {
+      const plan = JSON.stringify(engine.exportPlan());
+      const entry = {
+        t: dataTime, ver: pluginVersion, me: myCs(), online, activeDir: traffic.activeDir || null,
+        winds: currentWinds(), metar, aircraft: traffic.aircraft
+      };
+      if (plan !== lastLoggedPlan) { entry.plan = JSON.parse(plan); lastLoggedPlan = plan; }
+      const line = JSON.stringify(entry);
+      sessionLog.push(line); sessionLogBytes += line.length;
+      while (sessionLog.length > 2 && (sessionLogBytes > 60e6 || JSON.parse(sessionLog[0]).t < dataTime - 4 * 3600)) {
+        sessionLogBytes -= sessionLog.shift().length;
+        // der erste Eintrag muss den Plan enthalten, sonst fehlt beim Nachspielen der Anfang
+        const first = JSON.parse(sessionLog[0]);
+        if (!first.plan) { first.plan = engine.exportPlan(); sessionLog[0] = JSON.stringify(first); }
+      }
+    } catch (e) { /* Log ist nur Hilfe, nie den AMAN stoeren */ }
+  }
+  /** Log als gepackte Datei (eine JSON-Zeile je Datentakt) herunterladen. */
+  async function downloadLog() {
+    if (!sessionLog.length) { $('logInfo').textContent = 'Nothing recorded yet (the log records in EuroScope plugin mode).'; return; }
+    const head = JSON.stringify({ t: 'aman-session-log', v: 1, created: new Date().toISOString(), entries: sessionLog.length });
+    const text = head + '\n' + sessionLog.join('\n') + '\n';
+    let blob = new Blob([text], { type: 'application/json' }), ext = '.jsonl';
+    if (typeof CompressionStream !== 'undefined') {
+      blob = await new Response(blob.stream().pipeThrough(new CompressionStream('gzip'))).blob();
+      ext = '.jsonl.gz';
+    }
+    const d = new Date(), p2 = n => String(n).padStart(2, '0');
+    const name = 'aman-log-' + d.getUTCFullYear() + p2(d.getUTCMonth() + 1) + p2(d.getUTCDate()) + '-' + p2(d.getUTCHours()) + p2(d.getUTCMinutes()) + 'z' + ext;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    $('logInfo').textContent = 'Saved ' + name + ' (' + Math.round(blob.size / 1024) + ' KB). Send this file for analysis.';
+  }
+  function logInfoText() {
+    if (!sessionLog.length) return 'Recording starts with EuroScope data.';
+    const first = JSON.parse(sessionLog[0]).t, min = Math.round((dataTime - first) / 60);
+    return 'Recording: ' + Math.floor(min / 60) + ' h ' + (min % 60) + ' min, ' + sessionLog.length + ' updates';
   }
 
   // ---------- Verkehr ausserhalb der eigenen Reichweite ----------
@@ -994,6 +1045,7 @@
   // ---------- Bedienung ----------
   function bindUi() {
     $('btnHistory').addEventListener('click', () => { if (sync) sync.history(); });
+    $('btnLog').addEventListener('click', () => { downloadLog(); });
     $('btnRwy').addEventListener('click', openRwyDlg);
     bindRwyDlg();
     $('len').addEventListener('input', e => { engine.state.timelineMin = +e.target.value; save(); tick(); });
@@ -1041,7 +1093,7 @@
   }
   const clampRate = v => Math.max(10, Math.min(60, Math.round(+v || 45)));
 
-  function openSheet() { syncSheet(); $('sheet').hidden = false; }
+  function openSheet() { syncSheet(); $('logInfo').textContent = logInfoText(); $('sheet').hidden = false; }
   function syncSheet() {
     $('selSource').value = settings.source;
     $('selSource').querySelector('option[value="plugin"]').disabled = !isPluginHost;
