@@ -117,7 +117,7 @@ for (const D of ['26', '08']) {
     for (let k = 0; k <= 24; k++) {
       const r = trk * Math.PI / 180, d = 250 * 5 * k / 3600;
       L = e.update({ aircraft: [mk('TEST', x0 + Math.sin(r) * d, y0 + Math.cos(r) * d, trk, 9000, 250, 'SOTOV1A'), mk('OCN5ZP', 12, -5.2, 265, 14500, 270, 'NAPSA1A')] }, T0 + 5 * k, {});
-      etas.push(L.byCs.TEST.eta);
+      if (k >= 2) etas.push(L.byCs.TEST.eta);   // per Heading gefuehrt gilt ab dem zweiten Update in Folge
     }
     return { it: L.byCs.TEST, o: L.byCs.OCN5ZP, spread: Math.max(...etas) - Math.min(...etas) };
   };
@@ -196,8 +196,8 @@ for (const D of ['26', '08']) {
   const step = (k, dt) => e.update({ aircraft: [Object.assign({ cs: 'OVS', type: 'A320', wtc: 'M', alt: 6000, gs: 220, trk: (q.trk + dt + 360) % 360, hdg: (q.trk + dt + 360) % 360, iaf: 'ROKIL', passedIaf: true }, ll)] }, T0 + 5 * k, {}).byCs.OVS.remainingNm;
   const m = [step(0, 0), step(1, 40), step(2, 60), step(3, 0)].map(Math.round);
   ok(Math.max(...m) - Math.min(...m) <= 1, 'Ueberschiessen mit 40/60 Grad Korrektur: Meilen bleiben (' + m.join(' ') + ')');
-  const b1 = step(4, 90), b2 = step(5, 90);
-  ok(b2 < m[0] - 10 && Math.round(b1) === m[0], 'frueher Base-Turn: erst nach dem zweiten Update als Abkuerzung (' + Math.round(b1) + ' -> ' + Math.round(b2) + ' NM)');
+  const b = [4, 5, 6, 7, 8].map(k => Math.round(step(k, 90)));
+  ok(b[0] === m[0] && b[4] < m[0] - 10, 'frueher Base-Turn: nicht in der Kurve, nach kurzem geradeaus als Abkuerzung (' + b.join(' ') + ' NM)');
 }
 
 // 12) NAPSA-Flieger fuer 08R auf einem Direct kreuzt die BETOS-Transition (Fall DLH4EE): EuroScope meldet kurz BETOS als IAF

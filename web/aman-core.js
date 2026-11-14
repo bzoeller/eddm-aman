@@ -447,7 +447,7 @@
       return Math.max(t, 3600 / Math.max(1, st.rate[side]));
     }
 
-    function vectoredEta(ac, a, path, p, ttg, toIafDirect) {
+    function vectoredEta(ac, a, path, p, ttg, toIafDirect, now) {
       const D = cfg.defaults;
       if (a.trk == null || ac.inHold || toIafDirect < 3) return null;
       if (Math.hypot(p.x, p.y) > D.vectorAreaNm) return null;            // nur im Anflugbereich
@@ -456,7 +456,12 @@
       const brg = trackDeg(p, path.pts[0]);
       const diff = angDiff(a.trk, brg);
       const miss = diff >= 90 ? toIafDirect : toIafDirect * Math.sin(diff * Math.PI / 180);
-      if (miss < D.vectorMissNm) return null;
+      // deutlich am IAF vorbei (mindestens 30 Grad und vectorMissNm): eine schraege Annaeherung an den IAF (z. B. ueber
+      // einen Punkt davor oder mit Wind) ist kein Vektor (Fall DLH9XG: 20 Grad daneben, galt kurz als Abkuerzung)
+      if (miss < D.vectorMissNm || diff < 30) { a.vecN = 0; return null; }
+      // neu erkannt nur ohne Kurve und erst im zweiten Update in Folge (je Update einmal zaehlen)
+      if (a.vecT !== now) { a.vecT = now; a.vecN = (a.vecN || 0) + 1; }
+      if (!a.vectored && (a.vecN < 2 || turning(a, now))) return null;
       const gs = ac.gs > 60 ? ac.gs : 220;
       const tVia = toIafDirect / gs * 3600 + ttg[0];
       let best = null;
@@ -586,9 +591,11 @@
           // Abkuerzung erst, wenn sie zwei Updates hintereinander besteht: ein kurzer Kurswechsel
           // (z. B. Korrektur nach Ueberschiessen des Downwinds) laesst die Planung nicht springen
           // (laeuft schon eine Abkuerzung oder ist der Flieger per Vektoren gefuehrt, gilt sie sofort weiter)
+          // Nahe am IAF (Eindrehen in die Transition, Fall DLH8KP) muss sie 30 s bestehen, und keine beginnt in einer Kurve.
+          const need = pr.s < 5 ? 6 : 2, turn = turning(a, now);
           if (ct < t) {
-            a.cutN = (a.cutN || 0) + 1;
-            if (a.cutN >= 2 || a.cutOn || a.vectored) { t = ct; rem = crem; a.cutOn = true; }
+            if (a.cutT !== now) { a.cutT = now; a.cutN = (a.cutN || 0) + 1; }
+            if (a.cutOn || a.vectored || (a.cutN >= need && !turn)) { t = ct; rem = crem; a.cutOn = true; }
           } else { a.cutN = 0; a.cutOn = false; }
         }
         return etaResult(path, ttg, now, t, rem, { sNew: pr.s });
@@ -596,17 +603,16 @@
       // Per Heading gefuehrt, ohne den IAF zu ueberfliegen (z. B. direkt Richtung Final): Zeigt der Kurs im
       // Anflugbereich deutlich am IAF vorbei auf einen spaeteren Teil des Pfades, gilt der Flieger als von APP
       // gefuehrt. Gerechnet wird direkt bis zum Schnittpunkt, ab dort Standardprofil.
-      const vec = vectoredEta(ac, a, path, p, ttg, toIafDirect);
+      const vec = vectoredEta(ac, a, path, p, ttg, toIafDirect, now);
       if (vec) {
         return etaResult(path, ttg, now, vec.t, vec.rem, { vectored: true });
       }
       const dIaf = ac.distToIaf != null ? Math.max(ac.distToIaf, toIafDirect) : toIafDirect;
-      let gs;
-      if (ac.alt >= 10000 && ac.gs > 120) gs = ac.gs;
-      else {
-        const trk = trackDeg(p, path.pts[0]);
-        gs = Math.max(150, tasFromIas(cfg.profile.belowFL100, Math.max(ac.alt || 8000, 4000)) - headwind(trk, winds.aloft));
-      }
+      // ueber FL100 die gemessene Groundspeed; im Steigflug (noch nicht auf Reisegeschwindigkeit, Fall BAW632)
+      // mindestens das Profil-Tempo, sonst springt die ETA beim Durchsteigen von FL100
+      const profGs = Math.max(150, tasFromIas(cfg.profile.belowFL100, Math.max(ac.alt || 8000, 4000)) - headwind(trackDeg(p, path.pts[0]), winds.aloft));
+      let gs = profGs;
+      if (ac.alt >= 10000 && ac.gs > 120) gs = a.vs > 300 ? Math.max(ac.gs, profGs) : ac.gs;
       // zugewiesene Geschwindigkeit oder Mach aus EuroScope bis zum IAF (mit TopSky-Zusatz + / -). Grundlage bleibt die
       // gemessene Groundspeed: die ersten 90 s nach der Zuweisung (Umstellen) zaehlt sie, danach das Ziel; haelt sich der
       // Pilot 2 min nach der Zuweisung nicht daran (mehr als 15 kt daneben), zaehlt nur die gemessene.
@@ -707,6 +713,14 @@
       }
       return a.holdSince ? (nearestFixName(p) || 'HOLD') : null;
     }
+    /** Kurvt der Flieger gerade (mehr als 8 Grad Kursaenderung in den letzten ~10 s)? */
+    function turning(a, now) {
+      const h = a.trkHist || [];
+      if (a.trk == null || !h.length) return false;
+      const t = now != null ? now : h[h.length - 1].t;
+      for (let k = h.length - 1; k >= 0; k--) if (t - h[k].t >= 9) return angDiff(a.trk, h[k].trk) > 8;
+      return false;
+    }
     /** Naechster Holding-Fix mit bekannter Position (IAF) innerhalb von 15 NM. */
     function nearestFixName(p) {
       let best = null, bd = 15;
@@ -718,6 +732,7 @@
     function localDeparture(ac, a, now) {
       const vs = a.vsAlt != null && ac.alt != null && now > a.vsT ? (ac.alt - a.vsAlt) / (now - a.vsT) * 60 : 0;
       if (ac.alt != null) { a.vsAlt = ac.alt; a.vsT = now; }
+      a.vs = vs;   // Steig-/Sinkrate in ft/min (auch fuer die Geschwindigkeit vor dem IAF)
       if (typeof ac.orig !== 'string' || ac.orig.toUpperCase() !== (cfg.icao || 'EDDM')) return false;
       if (a.depSeen == null) a.depSeen = now;                 // beim ersten Sehen erst einmal abwarten
       if (vs > 300) a.depClimb = now;                         // steigt (mehr als 300 ft/min)
@@ -954,7 +969,8 @@
         const iaf = assignIafStream(ac, a, p);
         const holding = detectHolding(ac, a, p, now);
         const { side, dir: acDir, r } = assignRunway(ac, a, iaf, now, winds, dir, ch, esMixed);
-        if (r.vectored) a.vectored = true;
+        // per Heading gefuehrt gilt, solange der Kurs es zeigt (hinter dem IAF bleibt es fuer die Abkuerzung bestehen)
+        a.vectored = !!r.vectored || (!!a.vectored && !!a.passedIaf && !!r.passedIaf);
         a.side = side;
         a.dir = acDir;
         if (r.passedIaf && r.viaDownwind) a.passedIaf = true;

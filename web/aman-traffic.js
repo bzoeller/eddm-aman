@@ -46,7 +46,9 @@
         cs: String(p.callsign || '').toUpperCase(), lat: p.latitude, lon: p.longitude, alt: p.altitude, gs: p.groundspeed,
         hdg: p.heading, trk: p.heading, type: String(fp.aircraft_short || '').toUpperCase().slice(0, 4),
         wtc: wtc ? wtc[1].toUpperCase() : 'M', route: String(fp.route || '').toUpperCase().slice(-200), src: 'feed',
-        orig: String(fp.departure || '').toUpperCase().slice(0, 4)
+        orig: String(fp.departure || '').toUpperCase().slice(0, 4),
+        // Zeit der Position dieses Piloten (aelter als der Stand des Feeds): damit wird genauer hochgerechnet
+        at: fin(Date.parse(p.last_updated)) ? Date.parse(p.last_updated) / 1000 : undefined
       });
     }
     return { at: fin(at) ? at : Date.now() / 1000, aircraft: out };
@@ -80,7 +82,7 @@
       for (const a of u.aircraft || []) if (a && a.cs && !seen[a.cs] && (!remote[a.cs] || remote[a.cs].at < u.at)) remote[a.cs] = { at: u.at, a, src: 'upload' };
     }
     if (feed && now - feed.at <= MAX_AGE.feed) {
-      for (const a of feed.aircraft || []) if (a && a.cs && !seen[a.cs] && !remote[a.cs]) remote[a.cs] = { at: feed.at, a, src: 'feed' };
+      for (const a of feed.aircraft || []) if (a && a.cs && !seen[a.cs] && !remote[a.cs]) remote[a.cs] = { at: fin(a.at) && a.at <= feed.at ? a.at : feed.at, a, src: 'feed' };
     }
     for (const cs of Object.keys(remote)) {
       const r = remote[cs];
