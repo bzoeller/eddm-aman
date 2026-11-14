@@ -342,18 +342,18 @@
 
   /**
    * Konkrete Anweisung fuer CTR, um das Delay bis zum IAF abzubauen: zuerst ueber die Geschwindigkeit
-   * (ab FL280 Mach, darunter IAS in kt, in sinnvollen Grenzen), was dann noch fehlt als Umweg/Vektoren (+min),
+   * (oberhalb FL280 Mach, bis FL280 IAS in kt, in sinnvollen Grenzen), was dann noch fehlt als Umweg/Vektoren (+min),
    * ab holdMin Minuten Rest ein Holding. Liefert '' bei weniger als 30 s Delay.
    */
   function delayAdvice(it, now, opt) {
-    // Mach erst ab FL280, darunter nur Speeds in kt
+    // Mach erst oberhalb FL280, bis einschliesslich FL280 nur Speeds in kt
     const o = Object.assign({ holdMin: 8, minMach: 0.70, maxMachCut: 0.06, minIasHigh: 250, minIasLow: 220, machFromFt: 28000 }, opt || {});
     const D = it.delayIaf || 0, T = (it.etaIaf || 0) - now;
     if (D < 30 || !(T > 60)) return '';
     const gs = it.gs > 100 ? it.gs : 400, alt = it.alt || 20000;
     const ratio = T / (T + D);            // noetiger Faktor fuer die Geschwindigkeit bis zum IAF
     let text, factor;                      // factor: wirklich moegliche Verlangsamung
-    if (alt >= o.machFromFt) {
+    if (alt > o.machFromFt + 50) {   // FL280 selbst noch kt (50 ft Toleranz fuer die gemeldete Hoehe)
       const a = 661.5 * Math.sqrt((288.15 - 0.0019812 * Math.min(alt, 36089)) / 288.15);   // Schallgeschwindigkeit in kt
       const m = gs / a, mMin = Math.max(o.minMach, m - o.maxMachCut);
       const mNew = Math.max(mMin, Math.floor(m * ratio * 100) / 100);
