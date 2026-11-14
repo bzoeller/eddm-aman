@@ -245,6 +245,9 @@ void CAmanPlugin::BuildSnapshot() {
         }
         // zugewiesene Geschwindigkeit (IAS in kt) oder Mach (x100, z. B. 80 = M.80)
         a.asgSpd = ad.GetAssignedSpeed();
+        // zugewiesener Heading (0 = keiner): nur mit Heading gilt ein Flieger vor dem IAF als "per Heading gefuehrt"
+        a.asgHdg = ad.GetAssignedHeading();
+        a.asgKnown = true;
         a.asgMach = ad.GetAssignedMach();
 
         // IAF: zuerst aus der STAR (z. B. NAPSA1A), sonst der erste IAF der berechneten Route. Die STAR hat Vorrang,
@@ -258,7 +261,8 @@ void CAmanPlugin::BuildSnapshot() {
                 if (n != iaf || (!a.iaf.empty() && a.iaf != iaf)) continue;
                 a.iaf = iaf;
                 // "passiert" nur melden, wenn EuroScope den Punkt als ueberflogen fuehrt (laut SDK: -1)
-                if (er.GetPointDistanceInMinutes(i) < 0) a.passedIaf = 1;
+                // steht der IAF in der Route, auch "noch nicht passiert" melden, sonst muss der AMAN raten
+                a.passedIaf = er.GetPointDistanceInMinutes(i) < 0 ? 1 : 0;
             }
             if (!a.iaf.empty() && n == a.iaf) break;
         }

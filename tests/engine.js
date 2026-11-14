@@ -262,7 +262,7 @@ for (const D of ['26', '08']) {
   ok(!seenClimb, 'LHT448 im Steigflug nach dem Start: nicht im AMAN');
   let back = null;
   for (let k = 13; k <= 40; k++) { const L = e.update({ aircraft: [lht(k, 4000)] }, T0 + 5 * k, {}); if (back == null && L.byCs.LHT448) back = (k - 13) * 5; }
-  ok(back != null && back >= 55 && back <= 70, 'nach dem Steigflug (Hoehe gehalten) nach ' + back + ' s wieder eingeplant');
+  ok(back != null && back >= 55 && back <= 100, 'nach dem Steigflug (Hoehe gehalten) nach ' + back + ' s wieder eingeplant');
   const o = e.update({ aircraft: [Object.assign(lht(40, 3500), { cs: 'DLH1', orig: 'EDDF' })] }, T0 + 205, {});
   ok(!!o.byCs.DLH1, 'Anflug von woanders: sofort im AMAN');
 }

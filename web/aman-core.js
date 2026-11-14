@@ -450,6 +450,9 @@
     function vectoredEta(ac, a, path, p, ttg, toIafDirect, now) {
       const D = cfg.defaults;
       if (a.trk == null || ac.inHold || toIafDirect < 3) return null;
+      // EuroScope sagt "kein Heading zugewiesen": der Flieger fliegt seine Route ueber den IAF, auch wenn sein Kurs
+      // gerade z. B. aufs Final zeigt (Fall BAW954/LHX6LL/DLH9LM bei 08 von Nordwesten). Unbekannt: nach dem Kurs.
+      if (ac.asgHdg === 0) { a.vecN = 0; return null; }
       if (Math.hypot(p.x, p.y) > D.vectorAreaNm) return null;            // nur im Anflugbereich
       if (ac.alt != null && ac.alt > D.vectorMaxAltFt) return null;
       // Fliegt der Kurs am IAF vorbei? (seitlicher Abstand am naechsten Punkt, oder IAF liegt hinter dem Flieger)
@@ -465,7 +468,10 @@
       const gs = ac.gs > 60 ? ac.gs : 220;
       const tVia = toIafDirect / gs * 3600 + ttg[0];
       let best = null;
-      for (const h of rayHits(path, p, a.trk, 2, 40)) {
+      // Schnitte auf dem ersten Teilstueck hinter dem IAF sind normales Eindrehen am IAF (Route mit Knick davor,
+      // Fall BAW954/LHX6LL/DLH9LM ueber HAREM T104 ROKIL), keine Vektoren: erst ab dem zweiten Wegpunkt zaehlen
+      const minS = Math.max(2, path.cum[Math.min(2, path.cum.length - 1)] || 2);
+      for (const h of rayHits(path, p, a.trk, minS, 40)) {
         const t = h.d / gs * 3600 + ttgAt(ttg, h.s);
         if (!best || t < best.t) best = { t, rem: h.d + effRemaining(cfg, path, h.s), s: h.s };
       }
@@ -553,7 +559,10 @@
       // Heuristik nur, wenn EuroScope keine Routeninfo liefert
       if (!passed && ac.passedIaf == null) {
         pr = project(path, p, 0);
-        if (toIafDirect < 2.5 || (pr.s > 2 && pr.cross < 6)) passed = true;
+        // Faustregel: auf dem Pfad (unter 3 NM daneben) und in dessen Richtung (unter 60 Grad), oder am IAF selbst.
+        // Ohne den Kurs galt z. B. ein Flieger noerdlich der ROKIL-Transition 8 NM vor ROKIL schon als "passiert" (BAW954)
+        const along = a.trk == null || angDiff(a.trk, pointAt(path, pr.s).trk) < 60;
+        if (toIafDirect < 2.5 || (pr.s > 2 && pr.cross < 3 && along)) passed = true;
       }
       if (passed) {
         // Final erst ab 7000 ft oder darunter: hoeher wird nur bis zum Beginn des Finals projiziert
@@ -730,9 +739,14 @@
 
     /** Startet der Flieger gerade von hier (Startflughafen = Ziel) und steigt noch? Dann nicht planen. */
     function localDeparture(ac, a, now) {
-      const vs = a.vsAlt != null && ac.alt != null && now > a.vsT ? (ac.alt - a.vsAlt) / (now - a.vsT) * 60 : 0;
-      if (ac.alt != null) { a.vsAlt = ac.alt; a.vsT = now; }
-      a.vs = vs;   // Steig-/Sinkrate in ft/min (auch fuer die Geschwindigkeit vor dem IAF)
+      // Steig-/Sinkrate in ft/min ueber mindestens 30 s (Daten aus dem VATSIM-Feed aendern die Hoehe nur alle 15-30 s in
+      // einem Sprung; ueber ein einzelnes Update gerechnet wuerde sie zwischen 0 und 9000 ft/min springen, Fall LGL9731)
+      const h = (a.altHist || []).filter(x => now - x.t <= 120);
+      if (ac.alt != null && (!h.length || h[h.length - 1].t !== now)) h.push({ t: now, alt: ac.alt });
+      a.altHist = h;
+      let vs = 0;
+      for (let k = h.length - 1; k >= 0; k--) if (now - h[k].t >= 30) { vs = (h[h.length - 1].alt - h[k].alt) / (now - h[k].t) * 60; break; }
+      a.vs = vs;
       if (typeof ac.orig !== 'string' || ac.orig.toUpperCase() !== (cfg.icao || 'EDDM')) return false;
       if (a.depSeen == null) a.depSeen = now;                 // beim ersten Sehen erst einmal abwarten
       if (vs > 300) a.depClimb = now;                         // steigt (mehr als 300 ft/min)
