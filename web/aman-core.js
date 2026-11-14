@@ -537,13 +537,26 @@
       if (typeof ac.direct !== 'string' || !ac.direct) return null;
       const name = ac.direct.toUpperCase().replace(/^RW(?=\d\d)/, 'THR');
       const k = path.pts.findIndex((q, i) => i > 0 && (q.name === name || (q.name === 'THR' + name)));
-      if (k < 1) return null;
-      const P = path.pts[k], sK = path.cum[k], d = dist(p, P);
+      let P, sK, rF = null;
+      if (k >= 1) { P = path.pts[k]; sK = path.cum[k]; }
+      else {
+        // Punkt steht nicht im Pfad: Position kommt vom Plugin (aus der Route von EuroScope)
+        if (!fin(ac.dctLat) || !fin(ac.dctLon)) return null;
+        P = proj.xy(ac.dctLat, ac.dctLon);
+        const G = finalGeo(path), prP = project(path, P, a.sMin || 0);
+        const along = G ? (P.x - G.thr.x) * G.ox + (P.y - G.thr.y) * G.oy : 0;
+        const lat = G ? Math.abs((P.x - G.thr.x) * G.oy - (P.y - G.thr.y) * G.ox) : 99;
+        if (lat < 2 && along > 0.5 && along < FINAL_EXT_NM) { rF = along; sK = path.length - Math.min(along, cfg.profile.finalNm); }
+        else if (prP.cross < 2) sK = prP.s;                                       // auf (oder dicht am) Pfad
+        else return null;
+      }
+      const d = dist(p, P);
       const pr = project(path, p, a.sMin || 0);
       if (pr.s >= sK - 0.5 || d < 0.3) return null;                                // schon dort oder vorbei
       if (a.trk != null && angDiff(a.trk, trackDeg(p, P)) > 90) return null;      // fliegt nicht (mehr) hin
       const gs = ac.gs > 60 ? ac.gs : 220;
-      return { t: d / gs * 3600 + ttgAt(ttg, sK), rem: d + effRemaining(cfg, path, sK), k };
+      if (rF != null) return { t: d / gs * 3600 + finalTime(path, ttg, rF), rem: d + rF, name };   // auf das verlaengerte Final
+      return { t: d / gs * 3600 + ttgAt(ttg, sK), rem: d + effRemaining(cfg, path, sK), name: k >= 1 ? path.pts[k].name : name };
     }
 
     function computeEta(ac, a, path, now, winds) {
@@ -553,7 +566,7 @@
       const toIafDirect = dist(p, path.pts[0]);
       // Direct auf einen Punkt hinter dem IAF: der Flieger kuerzt ab, ab dort Standardprofil
       const dct = directTo(ac, a, path, p, ttg);
-      if (dct) return etaResult(path, ttg, now, dct.t, dct.rem, { sNew: a.sMin || 0, direct: path.pts[dct.k].name });
+      if (dct) return etaResult(path, ttg, now, dct.t, dct.rem, { sNew: a.sMin || 0, direct: dct.name });
       let passed = !!a.passedIaf || ac.passedIaf === true;
       let pr = null;
       // Heuristik nur, wenn EuroScope keine Routeninfo liefert
@@ -586,7 +599,12 @@
         // Abkuerzung: Kurs schneidet den Pfad weiter vorn (z. B. frueh auf den Base oder direkt aufs Final)
         const trk = a.trk;
         // nicht im Holding und nicht direkt am IAF (dort zeigt der Kurs oft zufaellig auf den Pfad)
-        if (trk != null && !ac.inHold) {
+        // Vektoren gebt ihr in TopSky immer als Heading ein: meldet EuroScope kein Heading (asgHdg 0) und keinen
+        // Direct, fliegt er seinen Pfad, eine Abkuerzung nur am Kurs gibt es dann nicht (Faelle nach ROKIL im Log 2).
+        // Ohne diese Angabe (VATSIM-Feed, aeltere Plugins) bleibt es bei der Erkennung am Kurs.
+        const noVec = noVectors(ac);
+        if (noVec) { a.cutN = 0; a.cutOn = false; }
+        if (trk != null && !ac.inHold && !noVec) {
           // direkt am IAF zeigt der Kurs beim Eindrehen oft zufaellig auf den Pfad: dort nur, wenn es >= 1 min spart
           const minGain = pr.s > 3 || a.vectored ? 0 : 60;
           let ct = t, crem = rem;
@@ -646,6 +664,9 @@
      * Downwind gefuehrt wird. Auf dem neuen Downwind: Standardprofil ab dort. Davor: direkt (nach Kurs,
      * sonst kuerzester Weg) zum Eintrittspunkt auf dem neuen Downwind, dann Standardprofil.
      */
+    /** Kein Heading in EuroScope zugewiesen und kein Direct: der Flieger wird nicht per Vektoren gefuehrt (nur mit Plugin-Angabe). */
+    const noVectors = ac => ac.asgHdg === 0 && !ac.direct;
+
     function computeEtaX(ac, a, rwy, now, winds) {
       const D = dwPaths[rwy];
       if (!D) return null;
@@ -673,7 +694,7 @@
         rem = effRemaining(cfg, P, pr.s) + extra;
       } else {
         let d = pr.cross;
-        if (a.trk != null) {
+        if (a.trk != null && !noVectors(ac)) {
           // gezielter Wechsel auf den anderen Downwind: dort wird auch steil eingefaedelt, kein Winkelfilter
           const hit = rayHit(P, p, a.trk, minS, 40, D.sAb, 180);
           if (hit) { d = hit.d; sJoin = hit.s; }
@@ -682,7 +703,7 @@
         rem = d + effRemaining(cfg, P, sJoin);
       }
       // direkt auf das (verlaengerte) Final dieser Bahn statt ueber den Downwind
-      const fin = finalIntercept(ac, a, P, ttg, p);
+      const fin = noVectors(ac) ? null : finalIntercept(ac, a, P, ttg, p);
       if (fin && fin.t < t - 30) { t = fin.t; rem = fin.rem; }
       return etaResult(P, ttg, now, t, rem, { sNew: a.sMin || 0, viaDownwind: D.iaf });
     }
@@ -966,6 +987,8 @@
         const ac = normalize(raw);
         if (!ac || seen[ac.cs]) continue;
         seen[ac.cs] = true;
+        // VFR-Anfluege (Flugregeln V oder Y = endet VFR) gehoeren nicht auf den AMAN (Fall OERRX)
+        if (ac.rules === 'V' || ac.rules === 'Y') continue;
         const a = st.ac[ac.cs] || (st.ac[ac.cs] = {});
         a.lastSeen = now;
         // Local-IFR (Start und Ziel EDDM): erst einplanen, wenn er mindestens 60 s nicht mehr steigt.

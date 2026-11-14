@@ -46,7 +46,7 @@
         cs: String(p.callsign || '').toUpperCase(), lat: p.latitude, lon: p.longitude, alt: p.altitude, gs: p.groundspeed,
         hdg: p.heading, trk: p.heading, type: String(fp.aircraft_short || '').toUpperCase().slice(0, 4),
         wtc: wtc ? wtc[1].toUpperCase() : 'M', route: String(fp.route || '').toUpperCase().slice(-200), src: 'feed',
-        orig: String(fp.departure || '').toUpperCase().slice(0, 4),
+        orig: String(fp.departure || '').toUpperCase().slice(0, 4), rules: String(fp.flight_rules || '').toUpperCase().slice(0, 1),
         // Zeit der Position dieses Piloten (aelter als der Stand des Feeds): damit wird genauer hochgerechnet
         at: fin(Date.parse(p.last_updated)) ? Date.parse(p.last_updated) / 1000 : undefined
       });
@@ -61,8 +61,9 @@
       const o = { cs: a.cs, lat: r4(a.lat), lon: r4(a.lon), alt: Math.round(a.alt || 0), gs: Math.round(a.gs || 0) };
       for (const k of ['hdg', 'trk', 'asgSpd', 'asgMach', 'asgHdg']) if (fin(a[k])) o[k] = Math.round(a[k]);
       for (const k of ['direct', 'holding', 'spdMod']) if (typeof a[k] === 'string' && a[k]) o[k] = a[k].slice(0, 8);
-      for (const k of ['type', 'wtc', 'star', 'iaf', 'arrRwy', 'trackedBy', 'stream', 'orig']) if (typeof a[k] === 'string' && a[k]) o[k] = a[k].slice(0, 16);
+      for (const k of ['type', 'wtc', 'star', 'iaf', 'arrRwy', 'trackedBy', 'stream', 'orig', 'rules']) if (typeof a[k] === 'string' && a[k]) o[k] = a[k].slice(0, 16);
       if (typeof a.route === 'string' && a.route) o.route = a.route.slice(-200);
+      if (fin(a.dctLat) && fin(a.dctLon)) { o.dctLat = r4(a.dctLat); o.dctLon = r4(a.dctLon); }
       if (a.passedIaf) o.passedIaf = true;
       return o;
     });

@@ -7,13 +7,14 @@
 namespace aman {
 
 struct Aircraft {
-    std::string cs, type, route, star, arrRwy, iaf, trackedBy, direct, holding, orig;
+    std::string cs, type, route, star, arrRwy, iaf, trackedBy, direct, holding, orig, rules;
     int asgSpd = 0, asgMach = 0;   // zugewiesen in EuroScope (kt IAS bzw. Mach x100), 0 = keine
     int asgHdg = 0;                // zugewiesener Heading, 0 = keiner
     bool asgKnown = false;         // Zuweisungen aus EuroScope gelesen (dann wird asgHdg immer gesendet, auch 0)
     char spdMod = 0;               // aus TopSky: '+' oder mehr, '-' oder weniger
     char wtc = 'M';
     double lat = NAN, lon = NAN, trk = NAN, hdg = NAN;
+    double dctLat = NAN, dctLon = NAN;   // Position des Direct-Punkts aus der Route von EuroScope
     int alt = 0, gs = 0;
     int passedIaf = -1;   // -1 unbekannt, 0 nein, 1 ja
 };
@@ -47,8 +48,10 @@ struct Snapshot {
             if (!a.iaf.empty()) o += ",\"iaf\":" + jsonStr(a.iaf);
             if (!a.trackedBy.empty()) o += ",\"trackedBy\":" + jsonStr(a.trackedBy);
             if (!a.direct.empty()) o += ",\"direct\":" + jsonStr(a.direct);
+            if (std::isfinite(a.dctLat) && std::isfinite(a.dctLon)) o += ",\"dctLat\":" + jsonNum(a.dctLat) + ",\"dctLon\":" + jsonNum(a.dctLon);
             if (!a.holding.empty()) o += ",\"holding\":" + jsonStr(a.holding);
             if (!a.orig.empty()) o += ",\"orig\":" + jsonStr(a.orig);
+            if (!a.rules.empty()) o += ",\"rules\":" + jsonStr(a.rules);
             if (a.asgSpd > 0) o += ",\"asgSpd\":" + std::to_string(a.asgSpd);
             if (a.asgKnown) o += ",\"asgHdg\":" + std::to_string(a.asgHdg);
             if (a.asgMach > 0) o += ",\"asgMach\":" + std::to_string(a.asgMach);

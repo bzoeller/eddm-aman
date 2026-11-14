@@ -267,5 +267,44 @@ for (const D of ['26', '08']) {
   ok(!!o.byCs.DLH1, 'Anflug von woanders: sofort im AMAN');
 }
 
+// 16) VFR-Anflug (Fall OERRX) gehoert nicht auf den AMAN; Y (endet VFR) auch nicht, Z (endet IFR) schon
+{
+  const e = Core.createEngine(cfg, { dir: '08' }), P = e.proj, T = P.xy(48.0, 11.5);
+  const ac = (cs, rules) => Object.assign({ cs, type: 'C172', wtc: 'L', alt: 4500, gs: 110, trk: 30, hdg: 30, route: 'DCT', rules }, P.ll(T.x, T.y));
+  const L = e.update({ aircraft: [ac('OERRX', 'V'), ac('DYVFR', 'Y'), ac('DZIFR', 'Z'), ac('DIFR', 'I')] }, T0, {});
+  ok(!L.byCs.OERRX && !L.byCs.DYVFR, 'VFR (V) und IFR-dann-VFR (Y): nicht im AMAN');
+  ok(!!L.byCs.DZIFR && !!L.byCs.DIFR, 'IFR (I) und VFR-dann-IFR (Z): im AMAN');
+}
+
+// 17) Hinter dem IAF: Vektoren kommen immer als Heading aus TopSky. Ohne Heading (asgHdg 0) und ohne Direct
+//     zaehlt ein Kurs auf den Pfad nicht als Abkuerzung; mit Heading wie bisher (frueher Base-Turn)
+{
+  const run = hdg => {
+    const e = Core.createEngine(cfg, { dir: '26' }), P = e.paths.ROKIL['26R'], iA = P.pts.findIndex(q => q.name === 'ABEAM');
+    const q = Core.pointAt(P, P.cum[1] + (P.cum[iA] - P.cum[1]) * 0.6), ll = e.proj.ll(q.x, q.y);
+    const step = (k, dt) => e.update({ aircraft: [Object.assign({ cs: 'VEC', type: 'A320', wtc: 'M', alt: 6000, gs: 220, trk: (q.trk + dt + 360) % 360, hdg: (q.trk + dt + 360) % 360, iaf: 'ROKIL', passedIaf: true, asgHdg: hdg }, ll)] }, T0 + 5 * k, {}).byCs.VEC.remainingNm;
+    return [step(0, 0)].concat([1, 2, 3, 4, 5, 6].map(k => step(k, 90))).map(Math.round);
+  };
+  const no = run(0), yes = run(160);
+  ok(Math.max(...no) - Math.min(...no) <= 1, 'kein Heading in EuroScope: Kurs aufs Final ist keine Abkuerzung (' + no.join(' ') + ' NM)');
+  ok(yes[6] < yes[0] - 10, 'Heading zugewiesen: Abkuerzung wie bisher (' + yes.join(' ') + ' NM)');
+}
+
+// 18) Direct auf einen Punkt, der nicht in den Pfaden steht (Fall VENUS31, DM450 auf dem verlaengerten Final 08R):
+//     Position kommt vom Plugin, gerechnet wird direkt dorthin und ab dort auf dem Final
+{
+  const e = Core.createEngine(cfg, { dir: '08' }), P = e.paths.BETOS['08R'], G = Core.finalGeo(P);
+  const D = { x: G.thr.x + G.ox * 20, y: G.thr.y + G.oy * 20 }, dLL = e.proj.ll(D.x, D.y);
+  const pos = { x: D.x - 2, y: D.y - 25 }, trk = Core.trackDeg(pos, D);
+  const ac = dct => Object.assign({ cs: 'VEN31', type: 'A320', wtc: 'M', alt: 15000, gs: 400, trk, hdg: trk, star: 'BETOS1A', iaf: 'BETOS', passedIaf: true, arrRwy: '08R', asgHdg: 0 },
+    dct ? { direct: 'DM450', dctLat: dLL.lat, dctLon: dLL.lon } : {}, e.proj.ll(pos.x, pos.y));
+  const r = e.update({ aircraft: [ac(true)] }, T0, {}).byCs.VEN31;
+  const want = Math.hypot(pos.x - D.x, pos.y - D.y) + 20;
+  ok(Math.abs(r.remainingNm - want) < 1.5, 'Direct DM450: ' + Math.round(r.remainingNm) + ' NM (erwartet ' + Math.round(want) + ')');
+  const e2 = Core.createEngine(cfg, { dir: '08' });
+  const r2 = e2.update({ aircraft: [Object.assign(ac(true), { dctLat: undefined, dctLon: undefined })] }, T0, {}).byCs.VEN31;
+  ok(r2.remainingNm > want + 15, 'ohne Koordinaten (alte Plugins): wie bisher ueber die Transition (' + Math.round(r2.remainingNm) + ' NM)');
+}
+
 console.log(fails ? fails + ' Fehler' : 'alles gruen');
 process.exit(fails ? 1 : 0);

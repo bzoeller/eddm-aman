@@ -89,13 +89,15 @@ In der hellen Version (MENU → Theme) wird weiße Schrift schwarz, Gelb und Wei
   - Bis dorthin zählt der direkte Weg nach Kurs (sonst der kürzeste Weg) zum Eintrittspunkt auf dem neuen Downwind. Base und Final sind als Eintritt ausgeschlossen.
   - Ab Erreichen des neuen Downwinds gilt das Standardprofil von dort.
 - **Per Heading geführt, ohne den IAF zu überfliegen:** Zeigt der Kurs eines Fliegers im Anflugbereich (unter 45 NM vom Platz, unter FL160) mehr als 3 NM am IAF vorbei auf einen späteren Teil des Pfades (Downwind, Base, Final), gilt er sofort als von APP geführt. Das AMAN rechnet dann direkt bis zum Schnittpunkt und ab dort mit dem Standardprofil, wenn das mindestens 1 min spart (`vectorAreaNm`, `vectorMaxAltFt`, `vectorMissNm`).
+- **Vektoren nur mit Heading:** Vektoren werden in TopSky immer als Heading eingegeben. Meldet EuroScope für einen Flieger kein Heading und keinen Direct, fliegt er laut AMAN seinen Pfad: Ein Kurs, der zufällig auf einen späteren Teil des Pfades oder aufs Final zeigt, zählt dann nicht als Abkürzung (vor und hinter dem IAF, auch beim Wechsel auf den anderen Downwind). Für Flieger aus dem VATSIM-Feed gibt es diese Angabe nicht, dort erkennt das AMAN Vektoren weiter am Kurs.
 - **Zugewiesene Geschwindigkeit aus EuroScope:** Speed (IAS) oder Mach, die ein Lotse in EuroScope zuweist, fließen in die Planung ein, mit dem TopSky-Zusatz „+“ (oder mehr) und „-“ (oder weniger).
   - Vor dem IAF gilt die Geschwindigkeit bis zum Fix, hinter dem IAF bis zum 15-NM-Final.
   - Grundlage bleibt die gemessene Groundspeed. In den ersten 90 Sekunden nach der Zuweisung zählt sie weiter, so lange stellt der Pilot um.
   - Weicht er 2 Minuten nach der Zuweisung noch um mehr als 15 kt ab, zählt nur die gemessene.
+- **VFR:** Flieger mit Flugregeln V (VFR) oder Y (IFR, endet VFR) kommen nicht auf den AMAN. Z (VFR, endet IFR) und I werden geplant.
 - **Local-IFR:** Ein Flieger mit Start und Ziel EDDM kommt erst in die Planung, wenn er nach dem Start mindestens eine Minute nicht mehr steigt. Kommt er zum Anflug zurück, ist er ganz normal in der Sequenz.
 - **IAF bleibt fest:** Ist ein Flieger seinem IAF näher als 40 NM oder schon vorbei, behält er seinen IAF, auch wenn er per Direct eine andere Transition kreuzt. Nur eine neue STAR ändert ihn.
-- **Direct aus EuroScope:** Gibt ein Lotse in EuroScope ein Direct auf einen Punkt des Anflugpfades (z. B. DM425 oder die Schwelle), rechnet das AMAN sofort direkt bis dorthin und ab dort mit dem Standardprofil. Ein Direct auf einen schon überflogenen Punkt wird ignoriert.
+- **Direct aus EuroScope:** Gibt ein Lotse in EuroScope ein Direct auf einen Punkt des Anflugpfades (z. B. DM425 oder die Schwelle), rechnet das AMAN sofort direkt bis dorthin und ab dort mit dem Standardprofil. Steht der Punkt nicht im Pfad (z. B. DM450 auf dem verlängerten Final), nimmt das AMAN seine Position aus der Route von EuroScope: liegt er auf dem verlängerten Final, rechnet es direkt dorthin und ab dort auf dem Final. Ein Direct auf einen schon überflogenen Punkt wird ignoriert.
 - **Final erst ab 7000 ft:** Ein Flieger gilt erst ab 7000 ft oder darunter als auf dem Final (`profile.finalMaxAltFt`). Wer höher die Anfluglinie kreuzt, wird nicht aufs Final gerechnet.
 
 ## Holdings

@@ -228,6 +228,7 @@ void CAmanPlugin::BuildSnapshot() {
         a.wtc = static_cast<char>(std::toupper(static_cast<unsigned char>(fd.GetAircraftWtc())));
         if (a.wtc != 'L' && a.wtc != 'M' && a.wtc != 'H' && a.wtc != 'J') a.wtc = 'M';
         a.route = fd.GetRoute() ? fd.GetRoute() : "";
+        a.rules = upper(fd.GetPlanType());   // Flugregeln: I, V, Y (IFR dann VFR), Z (VFR dann IFR); VFR-Anfluege plant der AMAN nicht
         a.orig = upper(fd.GetOrigin());   // Startflughafen: EDDM bei Local-IFR (der AMAN plant ihn erst nach dem Steigflug)
         a.star = upper(fd.GetStarName());
         a.arrRwy = upper(fd.GetArrivalRwy());   // Landebahn im Flugplan bzw. Tag, aendert der Lotse sie, zieht der AMAN mit
@@ -265,6 +266,14 @@ void CAmanPlugin::BuildSnapshot() {
                 a.passedIaf = er.GetPointDistanceInMinutes(i) < 0 ? 1 : 0;
             }
             if (!a.iaf.empty() && n == a.iaf) break;
+        }
+        // Koordinaten des Direct-Punkts (z. B. DM450 auf dem verlaengerten Final): so kann der AMAN auch Directs
+        // auf Punkte rechnen, die nicht in seinen Pfaden stehen (Fall VENUS31)
+        for (int i = 0; !a.direct.empty() && i < er.GetPointsNumber(); i++) {
+            if (upper(er.GetPointName(i)) != a.direct) continue;
+            CPosition q = er.GetPointPosition(i);
+            a.dctLat = q.m_Latitude; a.dctLon = q.m_Longitude;
+            break;
         }
         s.aircraft.push_back(a);
     }
