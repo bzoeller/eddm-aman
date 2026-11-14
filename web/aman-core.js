@@ -387,7 +387,7 @@
 
   /** Pflichtwerte der Config pruefen: Standardwerte stehen nur in eddm.json, nicht im Code. */
   const REQUIRED = {
-    defaults: ['spacingNm', 'ratePerRwy', 'timelineMin', 'captureNm', 'hysteresisSec', 'ctrMaxDelayMin', 'fixedFinalGs', 'bentLineBelowMin',
+    defaults: ['spacingNm', 'ratePerRwy', 'timelineMin', 'captureNm', 'hysteresisSec', 'overtakeSec', 'ctrMaxDelayMin', 'fixedFinalGs', 'bentLineBelowMin',
       'lostAfterSec', 'shortcutMinNm', 'refreshSec', 'rwyChangeBufferSec', 'vectorAreaNm', 'vectorMaxAltFt', 'vectorMissNm', 'finalInterceptMinNm'],
     profile: ['belowFL100', 'downwind', 'fap', 'final', 'finalSlowNm', 'finalNm', 'finalMaxAltFt']
   };
@@ -822,7 +822,8 @@
           let k = seq.length;
           while (k > 0) {
             const o = byCs[seq[k - 1]];
-            const fixed = st.staticMode || o.locked || o.passedIaf;
+            // hinter dem IAF ist ein Flieger fest, ausser der Neue ist eindeutig frueher (mehr als overtakeSec)
+            const fixed = st.staticMode || o.locked || (o.passedIaf && !(n.eta < o.eta - cfg.defaults.overtakeSec));
             if (o.eta > n.eta && !fixed) k--; else break;
           }
           seq.splice(k, 0, n.cs);
@@ -837,7 +838,9 @@
           for (let j = 0; j < seq.length - 1; j++) {
             const a = byCs[seq[j]], b = byCs[seq[j + 1]];
             if (a.locked || b.locked) continue;
-            const ok = st.staticMode ? (a.passedIaf && b.passedIaf) : (b.passedIaf || !a.passedIaf);
+            // vor dem IAF darf einer einen Flieger hinter dem IAF nur ueberholen, wenn er eindeutig frueher ist
+            // (Fall DLH3JA: noch auf dem Weg zu LANDU, aber Minuten vor KLM350, der ROKIL schon passiert hat)
+            const ok = st.staticMode ? (a.passedIaf && b.passedIaf) : (b.passedIaf || !a.passedIaf || b.eta < a.eta - cfg.defaults.overtakeSec);
             if (ok && b.eta < a.eta - H) { seq[j] = b.cs; seq[j + 1] = a.cs; changed = true; }
           }
         }
@@ -965,7 +968,7 @@
           cs: ac.cs, type: ac.type || '', wtc: ac.wtc || 'M', iaf, stream: a.stream, side,
           dir: acDir, rwy: rwyId(side, acDir), tFinal: r.tFinal, eta: r.eta, etaIaf: r.etaIaf, tIafToThr: r.tIafToThr,
           remainingNm: r.remainingNm, passedIaf: r.passedIaf, hold: !!a.hold,
-          locked: !!a.locked, alt: ac.alt, gs: ac.gs, direct: r.direct || null, holding,
+          locked: !!a.locked, alt: ac.alt, gs: ac.gs, direct: r.direct || null, holding, src: ac.src || null,
           trackedBy: typeof ac.trackedBy === 'string' && ac.trackedBy ? ac.trackedBy.toUpperCase() : null
         });
       }

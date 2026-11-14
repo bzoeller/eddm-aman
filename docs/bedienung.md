@@ -22,6 +22,16 @@ Ohne EuroScope (zum Ausprobieren) läuft eine Simulation: Anflugverkehr über di
 
 Alle AMANs teilen sich einen Plan. Was APP ändert (Reihenfolge, HOLD, CHANGE RWY, RECOMPUTE, Sperren, Runway Change, static/dynamic, FLOW, UNDO), sehen alle anderen nach 1 bis 2 Sekunden. Ändern darf, wer als EDDM-APP im VATSIM-Netz online ist. Ist kein APP online, übernimmt ein EDMM-CTR top-down: Er bekommt die APP-Ansicht und darf planen. Flieger außerhalb der eigenen EuroScope-Reichweite kommen von anderen Lotsen (z. B. CTR) und aus dem VATSIM-Datenfeed, so erscheinen sie so früh wie möglich. Ist der Abgleich gestört, steht es rot am Rand, und die Eingaben gelten nur im eigenen AMAN. Details: [sync.md](sync.md).
 
+**Warum steht ein Flieger dort?** Maus über das Label halten. Der Tooltip zeigt:
+- ETA und geplante Zeit (mit Delay),
+- Restweg, Groundspeed und Höhe,
+- IAF (passiert oder noch davor), Direct und Holding,
+- woher die Daten kommen: eigenes EuroScope, ein anderer Lotse oder der VATSIM-Feed.
+
+Die Reihenfolge richtet sich nach der Zeit, nicht nach den Meilen. Ein schnellerer Flieger mit mehr Meilen kann früher landen.
+
+**Überholen:** Hinter dem IAF ist die Reihenfolge stabil. Ein Flieger vor seinem IAF überholt einen Flieger hinter dem IAF nur, wenn er eindeutig früher ist, mehr als 2 Minuten (`overtakeSec`).
+
 ## Runway Change und Bahnsperre
 
 Beides stellt APP über einen Klick auf den RWY-Kasten ein. Alle Zeiten sind UTC und werden als `HH:MM` oder vierstellig (`1420`) eingegeben.

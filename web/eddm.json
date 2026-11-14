@@ -1239,6 +1239,7 @@
   "timelineMin": 45,
   "captureNm": 220,
   "hysteresisSec": 30,
+  "overtakeSec": 120,
   "ctrMaxDelayMin": 10,
   "finalGsMode": "typwind",
   "fixedFinalGs": 140,

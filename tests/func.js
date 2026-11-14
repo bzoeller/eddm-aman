@@ -58,6 +58,8 @@ function serve() {
   await shown(p, '#acmenu');
   const items = await p.$$eval('#acmenu button', l => l.map(x => x.textContent));
   ok(await p.isVisible('#acmenu') && /CHANGE RWY/.test(items[0]) && items[1] === 'HOLD' && items[2] === 'RECOMPUTE', 'Menue: ' + items.join(' | '));
+  const tip = await p.$eval('.col.N .label[data-cs="' + csN + '"]', l => l.title);
+  ok(/ETA \d\d:\d\d, planned \d\d:\d\d/.test(tip) && /NM to go, GS \d+ kt/.test(tip) && /via [A-Z]+/.test(tip), 'Tooltip am Label erklaert ETA, Planung, Weg und IAF');
   await p.screenshot({ path: out + '/menu.png' });
 
   // 3) HOLD

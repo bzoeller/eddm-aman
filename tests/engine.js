@@ -232,5 +232,24 @@ for (const D of ['26', '08']) {
   ok(L2.byCs.DW250.eta < L2.byCs.DW.eta - 30, '250 kt auf dem Downwind statt 220: frueher (' + Math.round(L2.byCs.DW.eta - L2.byCs.DW250.eta) + ' s)');
 }
 
+// 14) Vor dem IAF darf einer einen Flieger hinter dem IAF ueberholen, wenn er eindeutig (mehr als overtakeSec) frueher ist
+//     (Anlass DLH3JA/KLM350); nur knapp frueher: Reihenfolge bleibt wie bisher
+{
+  const order = (ots, dLandu) => {
+    const c2 = Object.assign({}, cfg, { defaults: Object.assign({}, cfg.defaults, { overtakeSec: ots }) });
+    const e = Core.createEngine(c2, { dir: '26' }), P = e.proj;
+    const R = P.xy(cfg.iafs.ROKIL.lat, cfg.iafs.ROKIL.lon), L0 = P.xy(cfg.iafs.LANDU.lat, cfg.iafs.LANDU.lon);
+    const klm = Object.assign({ cs: 'KLM350', type: 'B772', wtc: 'H', alt: 9000, gs: 250, trk: 126, hdg: 126, iaf: 'ROKIL', star: 'ROKIL1A', passedIaf: true }, P.ll(R.x, R.y));
+    const dl = Object.assign({ cs: 'DLH3JA', type: 'A320', wtc: 'M', alt: 10700, gs: 300, trk: 200, hdg: 200, iaf: 'LANDU', star: 'LANDU1A', passedIaf: false }, P.ll(L0.x, L0.y + dLandu));
+    e.update({ aircraft: [klm] }, T0, {});
+    const L = e.update({ aircraft: [klm, dl] }, T0 + 5, {});
+    return { order: L.bySide.N.map(i => i.cs).join(' '), d: Math.round(L.byCs.KLM350.eta - L.byCs.DLH3JA.eta) };
+  };
+  const x = order(1e6, 1);
+  const y = order(Math.max(1, x.d - 30), 1);
+  ok(x.d > 0 && x.order === 'KLM350 DLH3JA', 'ohne Regel: DLH3JA bleibt hinter KLM350, obwohl ' + x.d + ' s frueher');
+  ok(y.order === 'DLH3JA KLM350', 'mit Regel: eindeutig frueher, also vor KLM350 eingeplant');
+}
+
 console.log(fails ? fails + ' Fehler' : 'alles gruen');
 process.exit(fails ? 1 : 0);

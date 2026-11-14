@@ -661,10 +661,10 @@
       const txt = sdef && sdef.text === 'box' ? ' style="color:var(--txt-' + it.iaf + ')"' : '';
       const sig = [labelW, LH, pointsRight, it.iaf, it.cs, wtc, txt, mode === 'ctr' ? it.ctrStrokes + ':' + Math.round((it.delayIaf || 0) / 60) + ':' + (settings.ctrAdvice ? AmanCore.delayAdvice(it, nowSec()) : '') : Math.round(it.remainingNm), st, man, it.eat ? hhmm(it.eat) : ''].join('|');
       el.classList.toggle('flash', (flash[it.cs] || 0) > Date.now());
+      el.title = labelInfo(it) + (man ? '\nplaced manually (RECOMPUTE releases)' : '');
       if (el.dataset.sig !== sig) {
         el.dataset.sig = sig;
         el.innerHTML = labelSvg(labelW, LH, pointsRight, color, !!man) + st + '<span class="cs"' + txt + '>' + esc(it.cs) + '</span><span class="wtc"' + txt + '>' + wtc + '</span>' + right;
-        el.title = man ? 'placed manually (RECOMPUTE releases)' : '';
         el.setAttribute('aria-label', it.cs + (wtc ? ' ' + wtc : '') + (it.stream ? ' via ' + it.stream : '') + ', ' + hhmm(it._t) + (mode === 'ctr' ? ', ' + (it.ctrStrokes || 0) + ' min to lose' + (settings.ctrAdvice && AmanCore.delayAdvice(it, nowSec()) ? ', advice ' + AmanCore.delayAdvice(it, nowSec()) : '') : ', ' + Math.round(it.remainingNm) + ' NM'));
       }
     }
@@ -747,6 +747,19 @@
     if (sw.textContent !== st) sw.textContent = st;
     sw.hidden = !st;
     renderStatus();
+  }
+
+  /** Tooltip eines Labels: warum der Flieger dort steht (ETA, geplante Zeit, Weg, Tempo, Hoehe, IAF, Datenquelle). */
+  function labelInfo(it) {
+    const d = Math.round((it.reqSta - it.eta) / 60);
+    const fl = it.alt != null ? (it.alt >= 10000 ? 'FL' + String(Math.round(it.alt / 100)).padStart(3, '0') : Math.round(it.alt / 100) * 100 + ' ft') : '-';
+    const src = it.src === 'upload' ? 'other controller' : it.src === 'feed' ? 'VATSIM data (older position)' : 'own EuroScope';
+    return it.cs + ' ' + (it.type || '') + ' ' + (it.wtc || '') +
+      '\nETA ' + hhmm(it.eta) + ', planned ' + hhmm(it.reqSta) + (d > 0 ? ' (+' + d + ' min)' : '') +
+      '\n' + Math.round(it.remainingNm) + ' NM to go, GS ' + Math.round(it.gs || 0) + ' kt, ' + fl +
+      '\nvia ' + it.iaf + (it.stream ? ' (' + it.stream + ')' : '') + (it.passedIaf ? ', IAF passed' : ', before IAF') +
+      (it.direct ? ', direct ' + it.direct : '') + (it.holding ? ', holding ' + it.holding : '') +
+      '\ndata: ' + src;
   }
 
   function renderHold() {
