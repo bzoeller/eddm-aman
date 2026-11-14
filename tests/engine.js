@@ -252,5 +252,20 @@ for (const D of ['26', '08']) {
   ok(y.order === 'DLH3JA KLM350', 'mit Regel: eindeutig frueher, also vor KLM350 eingeplant');
 }
 
+// 15) Local-IFR (Start und Ziel EDDM, Fall LHT448): nach dem Start im Steigflug nicht im AMAN, nach dem Steigflug wieder
+{
+  const e = Core.createEngine(cfg, { dir: '08' }), P = e.proj;
+  const T = P.xy(48.353, 11.80);
+  const lht = (k, alt) => Object.assign({ cs: 'LHT448', type: 'A388', wtc: 'J', alt, gs: 180, trk: 70, hdg: 70, orig: 'EDDM', route: 'DCT' }, P.ll(T.x + k * 0.25, T.y + k * 0.1));
+  let seenClimb = false;
+  for (let k = 0; k <= 12; k++) { const L = e.update({ aircraft: [lht(k, 2000 + k * 150)] }, T0 + 5 * k, {}); if (L.byCs.LHT448) seenClimb = true; }
+  ok(!seenClimb, 'LHT448 im Steigflug nach dem Start: nicht im AMAN');
+  let back = null;
+  for (let k = 13; k <= 40; k++) { const L = e.update({ aircraft: [lht(k, 4000)] }, T0 + 5 * k, {}); if (back == null && L.byCs.LHT448) back = (k - 13) * 5; }
+  ok(back != null && back >= 55 && back <= 70, 'nach dem Steigflug (Hoehe gehalten) nach ' + back + ' s wieder eingeplant');
+  const o = e.update({ aircraft: [Object.assign(lht(40, 3500), { cs: 'DLH1', orig: 'EDDF' })] }, T0 + 205, {});
+  ok(!!o.byCs.DLH1, 'Anflug von woanders: sofort im AMAN');
+}
+
 console.log(fails ? fails + ' Fehler' : 'alles gruen');
 process.exit(fails ? 1 : 0);

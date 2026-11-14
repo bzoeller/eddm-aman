@@ -228,6 +228,7 @@ void CAmanPlugin::BuildSnapshot() {
         a.wtc = static_cast<char>(std::toupper(static_cast<unsigned char>(fd.GetAircraftWtc())));
         if (a.wtc != 'L' && a.wtc != 'M' && a.wtc != 'H' && a.wtc != 'J') a.wtc = 'M';
         a.route = fd.GetRoute() ? fd.GetRoute() : "";
+        a.orig = upper(fd.GetOrigin());   // Startflughafen: EDDM bei Local-IFR (der AMAN plant ihn erst nach dem Steigflug)
         a.star = upper(fd.GetStarName());
         a.arrRwy = upper(fd.GetArrivalRwy());   // Landebahn im Flugplan bzw. Tag, aendert der Lotse sie, zieht der AMAN mit
         // wer den Flieger gerade getrackt hat: daraus ermittelt der AMAN, welcher CTR-Sektor welchen Strom arbeitet

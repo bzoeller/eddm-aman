@@ -7,7 +7,7 @@
 namespace aman {
 
 struct Aircraft {
-    std::string cs, type, route, star, arrRwy, iaf, trackedBy, direct, holding;
+    std::string cs, type, route, star, arrRwy, iaf, trackedBy, direct, holding, orig;
     int asgSpd = 0, asgMach = 0;   // zugewiesen in EuroScope (kt IAS bzw. Mach x100), 0 = keine
     char spdMod = 0;               // aus TopSky: '+' oder mehr, '-' oder weniger
     char wtc = 'M';
@@ -46,6 +46,7 @@ struct Snapshot {
             if (!a.trackedBy.empty()) o += ",\"trackedBy\":" + jsonStr(a.trackedBy);
             if (!a.direct.empty()) o += ",\"direct\":" + jsonStr(a.direct);
             if (!a.holding.empty()) o += ",\"holding\":" + jsonStr(a.holding);
+            if (!a.orig.empty()) o += ",\"orig\":" + jsonStr(a.orig);
             if (a.asgSpd > 0) o += ",\"asgSpd\":" + std::to_string(a.asgSpd);
             if (a.asgMach > 0) o += ",\"asgMach\":" + std::to_string(a.asgMach);
             if (a.spdMod) o += std::string(",\"spdMod\":\"") + a.spdMod + "\"";

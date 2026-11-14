@@ -93,6 +93,7 @@ In der hellen Version (MENU → Theme) wird weiße Schrift schwarz, Gelb und Wei
   - Vor dem IAF gilt die Geschwindigkeit bis zum Fix, hinter dem IAF bis zum 15-NM-Final.
   - Grundlage bleibt die gemessene Groundspeed. In den ersten 90 Sekunden nach der Zuweisung zählt sie weiter, so lange stellt der Pilot um.
   - Weicht er 2 Minuten nach der Zuweisung noch um mehr als 15 kt ab, zählt nur die gemessene.
+- **Local-IFR:** Ein Flieger mit Start und Ziel EDDM kommt erst in die Planung, wenn er nach dem Start mindestens eine Minute nicht mehr steigt. Kommt er zum Anflug zurück, ist er ganz normal in der Sequenz.
 - **IAF bleibt fest:** Ist ein Flieger seinem IAF näher als 40 NM oder schon vorbei, behält er seinen IAF, auch wenn er per Direct eine andere Transition kreuzt. Nur eine neue STAR ändert ihn.
 - **Direct aus EuroScope:** Gibt ein Lotse in EuroScope ein Direct auf einen Punkt des Anflugpfades (z. B. DM425 oder die Schwelle), rechnet das AMAN sofort direkt bis dorthin und ab dort mit dem Standardprofil. Ein Direct auf einen schon überflogenen Punkt wird ignoriert.
 - **Final erst ab 7000 ft:** Ein Flieger gilt erst ab 7000 ft oder darunter als auf dem Final (`profile.finalMaxAltFt`). Wer höher die Anfluglinie kreuzt, wird nicht aufs Final gerechnet.

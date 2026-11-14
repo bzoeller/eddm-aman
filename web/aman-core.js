@@ -714,6 +714,17 @@
       return best;
     }
 
+    /** Startet der Flieger gerade von hier (Startflughafen = Ziel) und steigt noch? Dann nicht planen. */
+    function localDeparture(ac, a, now) {
+      const vs = a.vsAlt != null && ac.alt != null && now > a.vsT ? (ac.alt - a.vsAlt) / (now - a.vsT) * 60 : 0;
+      if (ac.alt != null) { a.vsAlt = ac.alt; a.vsT = now; }
+      if (typeof ac.orig !== 'string' || ac.orig.toUpperCase() !== (cfg.icao || 'EDDM')) return false;
+      if (a.depSeen == null) a.depSeen = now;                 // beim ersten Sehen erst einmal abwarten
+      if (vs > 300) a.depClimb = now;                         // steigt (mehr als 300 ft/min)
+      const last = Math.max(a.depSeen, a.depClimb || 0);
+      return now - last < 60;
+    }
+
     /** Datensatz pruefen und bereinigen (ein NaN wuerde die ganze Sequenz verderben). Kaputte Saetze: null. */
     function normalize(raw) {
       if (!raw || typeof raw.cs !== 'string' || !raw.cs.trim() || !fin(raw.lat) || !fin(raw.lon)) return null;
@@ -928,6 +939,9 @@
         seen[ac.cs] = true;
         const a = st.ac[ac.cs] || (st.ac[ac.cs] = {});
         a.lastSeen = now;
+        // Local-IFR (Start und Ziel EDDM): erst einplanen, wenn er mindestens 60 s nicht mehr steigt.
+        // Gerade gestartet und im Steigflug ist er kein Anflug (Fall LHT448).
+        if (localDeparture(ac, a, now)) continue;
         const p = proj.xy(ac.lat, ac.lon);
         // Kurs ueber Grund: aus den Daten, sonst aus der Bewegung seit dem letzten Update
         if (ac.trk != null) a.trk = ac.trk;
